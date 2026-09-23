@@ -52,3 +52,12 @@ _Avoid_: Login history, session table, event log.
 The single-row database record (`system_state`) reflecting current physical hardware telemetry (pause status, DC motor drive state, servo gate angle) synchronized from Board A's MQTT telemetry heartbeat.
 _Avoid_: System cache, device config, telemetry table.
 
+**Operator Session**:
+The client-side authenticated state of an operator on the web dashboard authorizing remote actuation commands.
+_Avoid_: User token, web login state, operator profile.
+
+**Binary Bit Indicator**:
+The visual 3-element display ($2^2, 2^1, 2^0$) representing the live physical LED states of a Shape Counter on the dashboard.
+_Avoid_: LED widget, binary badge, bit array.
+
+

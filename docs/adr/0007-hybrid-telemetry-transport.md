@@ -1,0 +1,3 @@
+# Hybrid Telemetry Transport with REST Snapshot and Direct MQTT WebSockets
+
+We decided that the web dashboard will hydrate its initial state via the Go backend REST snapshot (`GET /api/v1/state`) and subscribe directly to HiveMQ Cloud over secure WebSockets (`wss://`) for live sub-second telemetry (`factory/telemetry`) and batch rollover events (`factory/rollover`), with an automatic fallback to periodic REST polling when the WebSocket connection is degraded or severed. This eliminates cold-start state synchronization delay on dashboard loads, offloads continuous high-frequency bit stream fanout from the Go backend, and guarantees sub-second visual reflection of physical LED transitions while maintaining full resilience against browser WebSocket interruptions.

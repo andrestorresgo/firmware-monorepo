@@ -1,0 +1,3 @@
+# Authoritative Actuation Acknowledgment in UI
+
+We decided that the web dashboard servo toggle switch will not optimistically toggle to the desired state upon user interaction. Instead, dispatching a command sets the switch into a pending disabled state while calling `POST /api/v1/actuator/servo`, committing the switch's visual position only when an authoritative telemetry frame arrives from Board A confirming `servo_state`. If no confirmation arrives within a 3-second timeout window or if the machine is paused (ADR-0004), the control reverts to the existing authoritative state and presents an error notification. This guarantees that the operator's interface never displays a false physical gate state during communication drops or hardware safety lockouts.
