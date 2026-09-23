@@ -7,6 +7,8 @@
 #include "protocol.h"
 #include "link_manager.h"
 #include "actuator_state.h"
+#include "led_bank_driver.h"
+#include "counting_manager.h"
 
 // ESP-NOW Receive Queue Item
 struct EspNowRxMsg {
@@ -18,11 +20,15 @@ struct EspNowRxMsg {
 // Global State and Drivers
 static ActuatorState s_actuator_state;
 static LinkManager s_link_manager(120, 3000, 7000, 3); // 120ms dwell, 3s heartbeat, 7s timeout, 3 failures
+static LedBankDriver s_led_driver;
+static CountingManager s_counting_manager(s_actuator_state, s_led_driver);
 static uint8_t s_my_mac[6];
 
 // FreeRTOS Queues
 static QueueHandle_t s_rx_queue = NULL;
 static QueueHandle_t s_event_telemetry_queue = NULL;
+static QueueHandle_t s_detection_queue = NULL;
+static QueueHandle_t s_tx_rollover_queue = NULL;
 
 // ESP-NOW Callbacks
 static void espnow_recv_callback(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
@@ -127,8 +133,18 @@ void networkTask(void* pvParameters) {
                         Serial.println(F("[Actuator] Sent BEACON_ACK to Gateway, link paired!"));
                     }
                 }
+            } else if (rx_pkt.header.opcode == OPCODE_SHAPE_DETECTION) {
+                s_link_manager.record_activity(now);
+                Serial.printf("[Actuator] Received SHAPE_DETECTION from Gateway: shape=%u, id=%u\n",
+                              rx_pkt.payload.shape_detection.shape_id,
+                              rx_pkt.payload.shape_detection.detection_id);
+                if (s_detection_queue) {
+                    if (xQueueSend(s_detection_queue, &rx_pkt.payload.shape_detection, 0) != pdTRUE) {
+                        Serial.println(F("[Actuator] WARN: Detection queue full, dropping packet"));
+                    }
+                }
             } else {
-                // Future commands from Gateway (detections, servo) will be processed in Tickets 05 & 06
+                // Future commands from Gateway (e.g. servo) will be processed in Ticket 06
                 s_link_manager.record_activity(now);
             }
         }
@@ -138,7 +154,27 @@ void networkTask(void* pvParameters) {
             Serial.println(F("[Actuator] WARN: Gateway link timeout, resuming dynamic channel sweep..."));
         }
 
-        // 4. Send Telemetry Heartbeat (periodic every 3s OR event-driven)
+        // 4. Send Batch Rollover notifications to Gateway
+        BatchRolloverPayload rollover_msg = {};
+        while (s_tx_rollover_queue && xQueueReceive(s_tx_rollover_queue, &rollover_msg, 0) == pdTRUE) {
+            if (s_link_manager.is_paired()) {
+                EspNowPacket rollover_pkt = {};
+                rollover_pkt.header.magic = ESPNOW_MAGIC_BYTE;
+                rollover_pkt.header.opcode = OPCODE_BATCH_ROLLOVER;
+                rollover_pkt.header.payload_len = sizeof(BatchRolloverPayload);
+                rollover_pkt.payload.batch_rollover = rollover_msg;
+
+                uint8_t tx_buf[64];
+                int packed_len = pack_packet(&rollover_pkt, tx_buf, sizeof(tx_buf));
+                if (packed_len > 0) {
+                    esp_now_send(s_link_manager.get_gateway_mac(), tx_buf, (size_t)packed_len);
+                    Serial.printf("[Actuator] Emitted Batch Rollover to Gateway: shape=%u, size=%u, time=%lu\n",
+                                  rollover_msg.shape_id, rollover_msg.batch_size, (unsigned long)rollover_msg.timestamp_ms);
+                }
+            }
+        }
+
+        // 5. Send Telemetry Heartbeat (periodic every 3s OR event-driven)
         bool event_pending = (s_event_telemetry_queue && xQueueReceive(s_event_telemetry_queue, &now, 0) == pdTRUE);
         bool periodic_due = s_link_manager.should_send_heartbeat(now);
 
@@ -172,14 +208,38 @@ void actuatorTask(void* pvParameters) {
     (void)pvParameters;
     Serial.printf("[Core %d] Actuator Control & Logic task started\n", xPortGetCoreID());
 
+    s_counting_manager.begin();
     TickType_t last_wake_time = xTaskGetTickCount();
 
     for (;;) {
-        // Check if state changed, trigger event telemetry
+        uint32_t now = millis();
+
+        // 1. Process incoming shape detection commands from Core 0
+        ShapeDetectionPayload det = {};
+        while (s_detection_queue && xQueueReceive(s_detection_queue, &det, 0) == pdTRUE) {
+            bool accepted = s_counting_manager.handle_shape_detection(det.shape_id, now);
+            Serial.printf("[Actuator] Handled shape %u (id=%u): accepted=%d, count=%u, in_delay=%d\n",
+                          det.shape_id, det.detection_id, accepted,
+                          s_counting_manager.get_count(det.shape_id),
+                          s_counting_manager.is_in_observation_delay(det.shape_id));
+        }
+
+        // 2. Advance 800ms Observation Delay timers and check for Batch Rollovers
+        BatchRolloverPayload rollover = {};
+        while (s_counting_manager.tick(now, &rollover)) {
+            Serial.printf("[Actuator] Observation delay expired! Batch rollover for shape %u, count reset to 0\n",
+                          rollover.shape_id);
+            if (s_tx_rollover_queue) {
+                if (xQueueSend(s_tx_rollover_queue, &rollover, 0) != pdTRUE) {
+                    Serial.println(F("[Actuator] WARN: Rollover queue full"));
+                }
+            }
+        }
+
+        // 3. Check if state changed, trigger event telemetry
         if (s_actuator_state.is_dirty()) {
             s_actuator_state.clear_dirty();
             if (s_event_telemetry_queue) {
-                uint32_t now = millis();
                 xQueueSend(s_event_telemetry_queue, &now, 0);
             }
         }
@@ -199,8 +259,10 @@ void setup() {
     // Allocate FreeRTOS Queues
     s_rx_queue = xQueueCreate(8, sizeof(EspNowRxMsg));
     s_event_telemetry_queue = xQueueCreate(4, sizeof(uint32_t));
+    s_detection_queue = xQueueCreate(8, sizeof(ShapeDetectionPayload));
+    s_tx_rollover_queue = xQueueCreate(4, sizeof(BatchRolloverPayload));
 
-    if (!s_rx_queue || !s_event_telemetry_queue) {
+    if (!s_rx_queue || !s_event_telemetry_queue || !s_detection_queue || !s_tx_rollover_queue) {
         Serial.println(F("[FATAL] Failed to create FreeRTOS queues!"));
         while (1) { delay(1000); }
     }

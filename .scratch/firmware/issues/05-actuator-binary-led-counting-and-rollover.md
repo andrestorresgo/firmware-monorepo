@@ -6,10 +6,10 @@
 
 **Status:** ready-for-agent
 
-- [ ] Gateway subscribes to `factory/detections` and transmits shape detection frames over ESP-NOW.
-- [ ] Actuator accurately maps shapes to their respective 3-LED banks (Red=Circle, Green=Triangle, Blue=Square).
-- [ ] Each bank accurately displays binary values from 0 (`000`) up to 5 (`101`) in Active-HIGH configuration.
-- [ ] Reaching count 5 engages the 800ms non-blocking Observation Delay hold.
-- [ ] Duplicate detections for the same shape received during the 800ms Observation Delay are safely dropped.
-- [ ] Upon expiration of the 800ms window, the bank turns off (`000`), the counter resets to 0, and a Batch Rollover frame is sent to the Gateway.
-- [ ] Gateway receives the Batch Rollover frame and immediately publishes a JSON payload to `factory/rollover`.
+- [x] Gateway subscribes to `factory/detections` and transmits shape detection frames over ESP-NOW.
+- [x] Actuator accurately maps shapes to their respective 3-LED banks (Red=Circle, Green=Triangle, Blue=Square).
+- [x] Each bank accurately displays binary values from 0 (`000`) up to 5 (`101`) in Active-HIGH configuration.
+- [x] Reaching count 5 engages the 800ms non-blocking Observation Delay hold.
+- [x] Duplicate detections for the same shape received during the 800ms Observation Delay are safely dropped.
+- [x] Upon expiration of the 800ms window, the bank turns off (`000`), the counter resets to 0, and a Batch Rollover frame is sent to the Gateway.
+- [x] Gateway receives the Batch Rollover frame and immediately publishes a JSON payload to `factory/rollover`.

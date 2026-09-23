@@ -179,6 +179,97 @@ void test_format_telemetry_json_boundary_and_null(void) {
     TEST_ASSERT_FALSE(format_telemetry_json(&payload, small_buf, sizeof(small_buf)));
 }
 
+void test_parse_shape_detection_json(void) {
+    ShapeDetectionPayload payload = {};
+
+    // By shape_id and name
+    const char* json1 = "{\"shape_id\":1,\"shape_name\":\"circle\",\"detection_id\":101}";
+    TEST_ASSERT_TRUE(parse_shape_detection_json(json1, strlen(json1), &payload));
+    TEST_ASSERT_EQUAL_UINT8(SHAPE_CIRCLE, payload.shape_id);
+    TEST_ASSERT_EQUAL_UINT32(101, payload.detection_id);
+
+    // By shape_name only (triangle)
+    const char* json2 = "{\"shape_name\":\"triangle\",\"detection_id\":202}";
+    TEST_ASSERT_TRUE(parse_shape_detection_json(json2, strlen(json2), &payload));
+    TEST_ASSERT_EQUAL_UINT8(SHAPE_TRIANGLE, payload.shape_id);
+    TEST_ASSERT_EQUAL_UINT32(202, payload.detection_id);
+
+    // By shape_name only (square)
+    const char* json3 = "{\"shape_name\":\"square\"}";
+    TEST_ASSERT_TRUE(parse_shape_detection_json(json3, strlen(json3), &payload));
+    TEST_ASSERT_EQUAL_UINT8(SHAPE_SQUARE, payload.shape_id);
+    TEST_ASSERT_EQUAL_UINT32(0, payload.detection_id);
+
+    // Invalid shape ID
+    const char* json_invalid = "{\"shape_id\":4}";
+    TEST_ASSERT_FALSE(parse_shape_detection_json(json_invalid, strlen(json_invalid), &payload));
+
+    // Unknown shape name
+    const char* json_unknown = "{\"shape_name\":\"hexagon\"}";
+    TEST_ASSERT_FALSE(parse_shape_detection_json(json_unknown, strlen(json_unknown), &payload));
+
+    // Malformed JSON / NULL
+    TEST_ASSERT_FALSE(parse_shape_detection_json("{bad_json", 9, &payload));
+    TEST_ASSERT_FALSE(parse_shape_detection_json(NULL, 10, &payload));
+    TEST_ASSERT_FALSE(parse_shape_detection_json(json1, 0, &payload));
+    TEST_ASSERT_FALSE(parse_shape_detection_json(json1, strlen(json1), NULL));
+}
+
+void test_build_shape_detection_packet(void) {
+    uint8_t buffer[64];
+
+    // Valid build
+    int len = build_shape_detection_packet(SHAPE_TRIANGLE, 456, buffer, sizeof(buffer));
+    TEST_ASSERT_GREATER_THAN(0, len);
+    TEST_ASSERT_EQUAL_INT((int)(sizeof(FrameHeader) + sizeof(ShapeDetectionPayload)), len);
+
+    // Validate using protocol unpacker
+    EspNowPacket pkt = {};
+    TEST_ASSERT_TRUE(unpack_packet(buffer, (size_t)len, &pkt));
+    TEST_ASSERT_EQUAL_HEX8(ESPNOW_MAGIC_BYTE, pkt.header.magic);
+    TEST_ASSERT_EQUAL_HEX8(OPCODE_SHAPE_DETECTION, pkt.header.opcode);
+    TEST_ASSERT_EQUAL_UINT8(sizeof(ShapeDetectionPayload), pkt.header.payload_len);
+    TEST_ASSERT_EQUAL_UINT8(SHAPE_TRIANGLE, pkt.payload.shape_detection.shape_id);
+    TEST_ASSERT_EQUAL_UINT32(456, pkt.payload.shape_detection.detection_id);
+
+    // Validation errors
+    TEST_ASSERT_EQUAL_INT(-1, build_shape_detection_packet(0, 1, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL_INT(-1, build_shape_detection_packet(4, 1, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL_INT(-1, build_shape_detection_packet(SHAPE_CIRCLE, 1, NULL, sizeof(buffer)));
+    TEST_ASSERT_EQUAL_INT(-1, build_shape_detection_packet(SHAPE_CIRCLE, 1, buffer, 5)); // too small
+}
+
+void test_format_rollover_json(void) {
+    BatchRolloverPayload rollover = {};
+    char buf[128];
+
+    // Circle rollover
+    rollover.shape_id = SHAPE_CIRCLE;
+    rollover.batch_size = 5;
+    rollover.timestamp_ms = 12345;
+    TEST_ASSERT_TRUE(format_rollover_json(&rollover, buf, sizeof(buf)));
+    TEST_ASSERT_EQUAL_STRING("{\"shape_id\":1,\"shape_name\":\"circle\",\"timestamp\":12345}", buf);
+
+    // Triangle rollover
+    rollover.shape_id = SHAPE_TRIANGLE;
+    rollover.timestamp_ms = 99999;
+    TEST_ASSERT_TRUE(format_rollover_json(&rollover, buf, sizeof(buf)));
+    TEST_ASSERT_EQUAL_STRING("{\"shape_id\":2,\"shape_name\":\"triangle\",\"timestamp\":99999}", buf);
+
+    // Square rollover
+    rollover.shape_id = SHAPE_SQUARE;
+    rollover.timestamp_ms = 55555;
+    TEST_ASSERT_TRUE(format_rollover_json(&rollover, buf, sizeof(buf)));
+    TEST_ASSERT_EQUAL_STRING("{\"shape_id\":3,\"shape_name\":\"square\",\"timestamp\":55555}", buf);
+
+    // Errors
+    TEST_ASSERT_FALSE(format_rollover_json(NULL, buf, sizeof(buf)));
+    TEST_ASSERT_FALSE(format_rollover_json(&rollover, NULL, sizeof(buf)));
+    TEST_ASSERT_FALSE(format_rollover_json(&rollover, buf, 0));
+    char tiny_buf[10];
+    TEST_ASSERT_FALSE(format_rollover_json(&rollover, tiny_buf, sizeof(tiny_buf)));
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -195,6 +286,10 @@ int main(int argc, char** argv) {
     RUN_TEST(test_network_status_helper);
     RUN_TEST(test_format_telemetry_json_valid);
     RUN_TEST(test_format_telemetry_json_boundary_and_null);
+    RUN_TEST(test_parse_shape_detection_json);
+    RUN_TEST(test_build_shape_detection_packet);
+    RUN_TEST(test_format_rollover_json);
     return UNITY_END();
 }
+
 

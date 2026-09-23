@@ -177,6 +177,13 @@ void CloudBridge::check_mqtt() {
                     Serial.println(F("[CloudBridge] ERR: Failed to subscribe to 'factory/auth/response'"));
                 }
 
+                // Subscribe to shape detection topic
+                if (mqtt_client_.subscribe("factory/detections")) {
+                    Serial.println(F("[CloudBridge] Subscribed to 'factory/detections'"));
+                } else {
+                    Serial.println(F("[CloudBridge] ERR: Failed to subscribe to 'factory/detections'"));
+                }
+
                 publish_network_status(true);
             } else {
                 Serial.printf("[CloudBridge] MQTT connect failed, state=%d. Retrying in 3s...\n",
@@ -274,6 +281,24 @@ void CloudBridge::process_espnow_rx() {
             } else {
                 Serial.println(F("[CloudBridge] WARN: Dropped telemetry publish, MQTT not connected"));
             }
+        } else if (pkt.header.opcode == OPCODE_BATCH_ROLLOVER) {
+            Serial.printf("[CloudBridge] Received Batch Rollover: shape=%u, batch_size=%u, time=%lu\n",
+                          pkt.payload.batch_rollover.shape_id,
+                          pkt.payload.batch_rollover.batch_size,
+                          (unsigned long)pkt.payload.batch_rollover.timestamp_ms);
+
+            if (mqtt_connected_) {
+                char json_buf[128];
+                if (format_rollover_json(&pkt.payload.batch_rollover, json_buf, sizeof(json_buf))) {
+                    if (mqtt_client_.publish("factory/rollover", json_buf)) {
+                        Serial.printf("[CloudBridge] Published Batch Rollover to HiveMQ: %s\n", json_buf);
+                    } else {
+                        Serial.println(F("[CloudBridge] ERR: Failed to publish Batch Rollover to HiveMQ"));
+                    }
+                }
+            } else {
+                Serial.println(F("[CloudBridge] WARN: Dropped rollover publish, MQTT not connected"));
+            }
         }
     }
 }
@@ -341,6 +366,37 @@ void CloudBridge::mqtt_callback(char* topic, uint8_t* payload, unsigned int leng
         } else {
             Serial.println(F("[CloudBridge] ERR: Failed to parse auth response JSON!"));
         }
+    } else if (strcmp(topic, "factory/detections") == 0) {
+        ShapeDetectionPayload det = {};
+        if (parse_shape_detection_json((const char*)payload, (size_t)length, &det)) {
+            Serial.printf("[CloudBridge] Parsed Shape Detection: shape_id=%u, detection_id=%u\n",
+                          det.shape_id, det.detection_id);
+            s_instance->forward_shape_detection(&det);
+        } else {
+            Serial.println(F("[CloudBridge] ERR: Failed to parse shape detection JSON!"));
+        }
+    }
+}
+
+void CloudBridge::forward_shape_detection(const struct ShapeDetectionPayload* det) {
+    if (!esp_now_initialized_ || !det) return;
+
+    uint8_t buffer[64];
+    int len = build_shape_detection_packet(det->shape_id, det->detection_id, buffer, sizeof(buffer));
+    if (len <= 0) return;
+
+    const uint8_t* target_mac = actuator_paired_ ? actuator_mac_ : nullptr;
+    uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (!target_mac) {
+        target_mac = bcast;
+    }
+
+    esp_err_t res = esp_now_send(target_mac, buffer, (size_t)len);
+    if (res == ESP_OK) {
+        Serial.printf("[CloudBridge] Forwarded Shape Detection (id=%u, shape=%u) via ESP-NOW\n",
+                      det->detection_id, det->shape_id);
+    } else {
+        Serial.printf("[CloudBridge] ERR: esp_now_send shape detection failed, err=%d\n", res);
     }
 }
 

@@ -99,3 +99,88 @@ bool format_telemetry_json(const struct TelemetryPayload* telemetry, char* out_b
     return (written > 0 && (size_t)written < max_len);
 }
 
+bool parse_shape_detection_json(const char* json_str, size_t len, struct ShapeDetectionPayload* out_payload) {
+    if (!json_str || len == 0 || !out_payload) {
+        return false;
+    }
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, json_str, len);
+    if (err) {
+        return false;
+    }
+
+    uint8_t shape_id = doc["shape_id"] | 0;
+    if (shape_id == 0) {
+        const char* name = doc["shape_name"];
+        if (name) {
+            if (strcasecmp(name, "circle") == 0 || strcasecmp(name, "red") == 0) {
+                shape_id = SHAPE_CIRCLE;
+            } else if (strcasecmp(name, "triangle") == 0 || strcasecmp(name, "green") == 0) {
+                shape_id = SHAPE_TRIANGLE;
+            } else if (strcasecmp(name, "square") == 0 || strcasecmp(name, "blue") == 0) {
+                shape_id = SHAPE_SQUARE;
+            }
+        }
+    }
+
+    if (shape_id < SHAPE_CIRCLE || shape_id > SHAPE_SQUARE) {
+        return false;
+    }
+
+    out_payload->shape_id = shape_id;
+    out_payload->detection_id = doc["detection_id"] | 0;
+    return true;
+}
+
+int build_shape_detection_packet(uint8_t shape_id, uint32_t detection_id, uint8_t* out_buf, size_t max_len) {
+    if (shape_id < SHAPE_CIRCLE || shape_id > SHAPE_SQUARE) {
+        return -1;
+    }
+    if (!out_buf) {
+        return -1;
+    }
+    size_t required_len = sizeof(struct FrameHeader) + sizeof(struct ShapeDetectionPayload);
+    if (max_len < required_len) {
+        return -1;
+    }
+
+    struct EspNowPacket pkt;
+    memset(&pkt, 0, sizeof(pkt));
+    pkt.header.magic = ESPNOW_MAGIC_BYTE;
+    pkt.header.opcode = OPCODE_SHAPE_DETECTION;
+    pkt.header.payload_len = sizeof(struct ShapeDetectionPayload);
+    pkt.payload.shape_detection.shape_id = shape_id;
+    pkt.payload.shape_detection.detection_id = detection_id;
+
+    return pack_packet(&pkt, out_buf, max_len);
+}
+
+bool format_rollover_json(const struct BatchRolloverPayload* rollover, char* out_buf, size_t max_len) {
+    if (!rollover || !out_buf || max_len == 0) {
+        return false;
+    }
+
+    const char* shape_name = "unknown";
+    switch (rollover->shape_id) {
+        case SHAPE_CIRCLE:
+            shape_name = "circle";
+            break;
+        case SHAPE_TRIANGLE:
+            shape_name = "triangle";
+            break;
+        case SHAPE_SQUARE:
+            shape_name = "square";
+            break;
+        default:
+            break;
+    }
+
+    int written = snprintf(out_buf, max_len,
+                           "{\"shape_id\":%u,\"shape_name\":\"%s\",\"timestamp\":%lu}",
+                           rollover->shape_id, shape_name, (unsigned long)rollover->timestamp_ms);
+
+    return (written > 0 && (size_t)written < max_len);
+}
+
+

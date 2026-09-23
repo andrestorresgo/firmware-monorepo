@@ -58,6 +58,7 @@ private:
     void process_espnow_rx();
     void publish_network_status(bool force = false);
     void setup_esp_now();
+    void forward_shape_detection(const struct ShapeDetectionPayload* det);
 
     static void mqtt_callback(char* topic, uint8_t* payload, unsigned int length);
     static void espnow_recv_callback(const uint8_t *mac_addr, const uint8_t *data, int data_len);

@@ -27,6 +27,20 @@ int build_beacon_packet(uint8_t wifi_channel, const uint8_t* gateway_mac, uint32
 // Returns true if output buffer was sufficiently large and formatting succeeded
 bool format_telemetry_json(const struct TelemetryPayload* telemetry, char* out_buf, size_t max_len);
 
+// Parses JSON string payload received on factory/detections into ShapeDetectionPayload struct
+// Supports {"shape_id": <int>, "shape_name": "<str>"}
+// Returns true if parsing was successful and shape_id is valid (1, 2, or 3)
+bool parse_shape_detection_json(const char* json_str, size_t len, struct ShapeDetectionPayload* out_payload);
+
+// Constructs and packs a validated ESP-NOW shape detection packet (OPCODE_SHAPE_DETECTION) ready for transmission
+// Returns the total packed frame length in bytes on success, or negative on validation error
+int build_shape_detection_packet(uint8_t shape_id, uint32_t detection_id, uint8_t* out_buf, size_t max_len);
+
+// Formats JSON string matching {"shape_id": <int>, "shape_name": "<str>", "timestamp": <int>}
+// for publishing to factory/rollover
+// Returns true if output buffer was sufficiently large and formatting succeeded
+bool format_rollover_json(const struct BatchRolloverPayload* rollover, char* out_buf, size_t max_len);
+
 #ifdef __cplusplus
 }
 #endif
