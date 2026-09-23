@@ -6,6 +6,8 @@
 #include "protocol.h"
 #include "auth_terminal.h"
 #include "terminal_display.h"
+#include "network_status.h"
+#include "cloud_bridge.h"
 
 // 4x4 Matrix Keypad Configuration
 // Spec: Rows GPIO 13, 12, 14, 27; Cols GPIO 26, 25, 33, 32
@@ -29,6 +31,7 @@ static TerminalDisplay s_display;
 // FreeRTOS Inter-Core Communication Queues
 QueueHandle_t g_auth_request_queue = NULL;
 QueueHandle_t g_auth_response_queue = NULL;
+QueueHandle_t g_network_status_queue = NULL;
 
 // Terminal UI & Keypad Task (Pinned to Core 1 per ADR-0003)
 void terminalTask(void* pvParameters) {
@@ -46,7 +49,21 @@ void terminalTask(void* pvParameters) {
         uint32_t delta_ms = now - last_tick_ms;
         last_tick_ms = now;
 
-        // 1. Scan Keypad
+        // 1. Check for Network Status updates from Core 0
+        if (g_network_status_queue != NULL) {
+            NetworkStatus status = {};
+            if (xQueueReceive(g_network_status_queue, &status, 0) == pdTRUE) {
+                bool online = is_system_online(&status);
+                if (online != s_terminal.is_network_connected()) {
+                    s_terminal.set_network_connected(online);
+                    state_changed = true;
+                    Serial.printf("[Terminal] Network status updated: online=%d (WiFi=%d, MQTT=%d, Ch=%d)\n",
+                                  online, status.wifi_connected, status.mqtt_connected, status.wifi_channel);
+                }
+            }
+        }
+
+        // 2. Scan Keypad
         char key = s_keypad.getKey();
         if (key != NO_KEY) {
             Serial.printf("[Keypad] Key pressed: '%c'\n", key);
@@ -69,7 +86,7 @@ void terminalTask(void* pvParameters) {
             }
         }
 
-        // 2. Check for incoming server responses from Core 0
+        // 3. Check for incoming server responses from Core 0
         if (g_auth_response_queue != NULL) {
             AuthResponse resp = {};
             if (xQueueReceive(g_auth_response_queue, &resp, 0) == pdTRUE) {
@@ -80,10 +97,10 @@ void terminalTask(void* pvParameters) {
             }
         }
 
-        // 3. Advance timers and state machines
+        // 4. Advance timers and state machines
         s_terminal.tick(delta_ms);
 
-        // 4. Update display if state changed or in active timer states
+        // 5. Update display if state changed or in active timer states
         TerminalState current_state = s_terminal.get_state();
         if (current_state != last_state || state_changed ||
             current_state == STATE_AUTH_LOCKED ||
@@ -100,17 +117,17 @@ void terminalTask(void* pvParameters) {
     }
 }
 
-// Network Bridge Task Stub (Pinned to Core 0 per ADR-0003, fully implemented in Ticket 03)
+// Network Bridge Task (Pinned to Core 0 per ADR-0003)
 void networkTask(void* pvParameters) {
     (void)pvParameters;
     Serial.printf("[Core %d] Network bridge task started\n", xPortGetCoreID());
 
+    CloudBridge bridge(g_auth_request_queue, g_auth_response_queue, g_network_status_queue);
+    bridge.begin();
+
     for (;;) {
-        AuthRequest req = {};
-        if (g_auth_request_queue != NULL && xQueueReceive(g_auth_request_queue, &req, pdMS_TO_TICKS(100)) == pdTRUE) {
-            Serial.printf("[Network Bridge] Core 0 received auth request for user_id=%u, pin='%s'\n", req.user_id, req.pin);
-            // In Ticket 03, this will publish to factory/auth/request over TLS MQTT.
-        }
+        bridge.loop();
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -124,8 +141,9 @@ void setup() {
     // Create FreeRTOS inter-core communication queues
     g_auth_request_queue = xQueueCreate(4, sizeof(AuthRequest));
     g_auth_response_queue = xQueueCreate(4, sizeof(AuthResponse));
+    g_network_status_queue = xQueueCreate(4, sizeof(NetworkStatus));
 
-    if (!g_auth_request_queue || !g_auth_response_queue) {
+    if (!g_auth_request_queue || !g_auth_response_queue || !g_network_status_queue) {
         Serial.println(F("[FATAL] Failed to create FreeRTOS queues!"));
         while (1) { delay(1000); }
     }
@@ -141,11 +159,11 @@ void setup() {
         1 // Core 1
     );
 
-    // Spawn Network Task on Core 0 (MQTT, Wi-Fi, ESP-NOW)
+    // Spawn Network Task on Core 0 (MQTT, Wi-Fi, ESP-NOW) with 8192 stack size for TLS
     xTaskCreatePinnedToCore(
         networkTask,
         "NetworkTask",
-        4096,
+        8192,
         NULL,
         1,
         NULL,

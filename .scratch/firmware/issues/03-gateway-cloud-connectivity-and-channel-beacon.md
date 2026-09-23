@@ -4,12 +4,12 @@
 
 **Blocked by:** 02: Gateway (Board A) Matrix Keypad & Two-Step Auth Terminal
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Gateway connects reliably to Wi-Fi Station mode using credentials from `secrets.h`.
-- [ ] TLS MQTT client establishes and maintains an authenticated connection to HiveMQ Cloud over port 8883.
-- [ ] Network status updates are posted to the UI task via FreeRTOS queue and rendered on the OLED.
-- [ ] If disconnected from Wi-Fi or MQTT, the OLED displays an offline warning and blocks auth submission.
-- [ ] Outgoing auth requests from the terminal are published to `factory/auth/request`.
-- [ ] Incoming messages on `factory/auth/response` are parsed and delivered to the terminal state engine.
-- [ ] Wi-Fi RF channel is dynamically queried, and ESP-NOW discovery beacons are broadcast on that channel.
+- [x] Gateway connects reliably to Wi-Fi Station mode using credentials from `secrets.h`.
+- [x] TLS MQTT client establishes and maintains an authenticated connection to HiveMQ Cloud over port 8883.
+- [x] Network status updates are posted to the UI task via FreeRTOS queue and rendered on the OLED.
+- [x] If disconnected from Wi-Fi or MQTT, the OLED displays an offline warning and blocks auth submission.
+- [x] Outgoing auth requests from the terminal are published to `factory/auth/request`.
+- [x] Incoming messages on `factory/auth/response` are parsed and delivered to the terminal state engine.
+- [x] Wi-Fi RF channel is dynamically queried, and ESP-NOW discovery beacons are broadcast on that channel.
