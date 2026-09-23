@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Both `board-a-gateway` and `board-b-actuator` build successfully in PlatformIO with zero compilation errors.
-- [ ] Dependencies (`U8g2`, `Keypad`, `PubSubClient`, `ESP32Servo`, `ArduinoJson`) are properly specified and fetched.
-- [ ] Protocol definitions exist in each project defining identical binary structs for beacons, commands, telemetry, and batch rollover with frame validation (`0xA5`).
-- [ ] A `secrets.h.example` template is provided and real `secrets.h` files are excluded by `.gitignore`.
-- [ ] Unit test runners are configured to allow logic and protocol serialization testing without physical hardware.
+- [x] Both `board-a-gateway` and `board-b-actuator` build successfully in PlatformIO with zero compilation errors.
+- [x] Dependencies (`U8g2`, `Keypad`, `PubSubClient`, `ESP32Servo`, `ArduinoJson`) are properly specified and fetched.
+- [x] Protocol definitions exist in each project defining identical binary structs for beacons, commands, telemetry, and batch rollover with frame validation (`0xA5`).
+- [x] A `secrets.h.example` template is provided and real `secrets.h` files are excluded by `.gitignore`.
+- [x] Unit test runners are configured to allow logic and protocol serialization testing without physical hardware.

@@ -1,0 +1,16 @@
+# PlatformIO build artifacts
+.pio
+.pio/
+**/build/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Secrets & Environment configuration
+**/secrets.h
+!**/secrets.h.example
+*.env
+*.env.local
