@@ -1,0 +1,3 @@
+# Unified Authentication Engine with Row-Level Transaction Locking
+
+We decided to route both physical keypad authentication requests (received over MQTT on `factory/auth/request`) and web dashboard logins (received via HTTP REST on `POST /api/v1/auth/login`) through a single unified `AuthService` domain engine executing within PostgreSQL row-level locked transactions (`SELECT ... FOR UPDATE`). This guarantees that concurrent authentication attempts for the same User ID cannot suffer race conditions on `failed_attempts` increments or bypass the 60-second `locked_until` lockout threshold, ensuring complete credential state consistency and unified audit logging across both input surfaces.

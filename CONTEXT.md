@@ -35,3 +35,20 @@ _Avoid_: Emergency stop, soft pause, system standby, motor kill.
 **Telemetry Heartbeat**:
 The hybrid periodic (3-second interval) and event-driven status frame transmitted from the Actuator to the Gateway over ESP-NOW containing live peripheral states and current binary counter values.
 _Avoid_: Polling packet, ping, keepalive frame.
+
+**Per-User Lockout**:
+The temporary 60-second security freeze applied strictly to an individual user record after 2 consecutive failed PIN attempts, without impacting other users.
+_Avoid_: System lockout, IP ban, global lockout.
+
+**Ingestion Debounce Window**:
+The 2-second rate-limiting window enforced on incoming Vision API webhooks to drop duplicate detections of the same shape.
+_Avoid_: Throttle delay, camera sleep, detection cooldown.
+
+**Access Audit Trail**:
+The immutable, append-only log record (`auth_audit_logs`) tracking authentication attempts across both input surfaces (`KEYPAD` and `DASHBOARD`).
+_Avoid_: Login history, session table, event log.
+
+**Singleton System State**:
+The single-row database record (`system_state`) reflecting current physical hardware telemetry (pause status, DC motor drive state, servo gate angle) synchronized from Board A's MQTT telemetry heartbeat.
+_Avoid_: System cache, device config, telemetry table.
+

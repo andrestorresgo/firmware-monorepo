@@ -1,0 +1,3 @@
+# Authoritative Telemetry Synchronization for System State
+
+We decided that remote actuation commands dispatched via HTTP REST or dashboard UI will publish to HiveMQ without optimistically updating the `system_state` singleton table in PostgreSQL. Database state is updated exclusively upon receiving verified hardware telemetry from Board A on `factory/telemetry`. Because the Actuator (Board B) enters total hardware lockout during Machine Pause (ADR 0004), physical state reported by telemetry remains the sole source of truth, preventing the database and dashboard from displaying a falsely opened servo gate when physical actuation is halted.
