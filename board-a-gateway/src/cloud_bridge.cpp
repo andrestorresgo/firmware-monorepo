@@ -47,7 +47,11 @@ void CloudBridge::begin() {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     // Configure TLS Certificate for HiveMQ Cloud
+#ifdef MQTT_INSECURE_TLS
+    wifi_client_.setInsecure();
+#else
     wifi_client_.setCACert(HIVEMQ_ROOT_CA);
+#endif
 
     // Configure MQTT Client
     mqtt_client_.setServer(MQTT_BROKER_HOST, MQTT_BROKER_PORT);
@@ -103,6 +107,9 @@ void CloudBridge::check_wifi() {
         Serial.printf("[CloudBridge] Gateway MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
                       mac_address_[0], mac_address_[1], mac_address_[2],
                       mac_address_[3], mac_address_[4], mac_address_[5]);
+
+        // Synchronize system time via SNTP for TLS certificate date validation
+        configTime(0, 0, "pool.ntp.org", "time.nist.gov");
 
         setup_esp_now();
         publish_network_status(true);
