@@ -4,12 +4,13 @@
 
 **Blocked by:** 01: Project Scaffolding, Library Configuration, and Protocol Definitions
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] OLED initializes cleanly on I2C pins without column shifting or graphical corruption.
-- [ ] Matrix keypad scans keys responsively without key bounce or spurious double-triggers.
-- [ ] Phase 1 correctly accepts multi-digit User IDs, handles `*` backspacing, and advances to Phase 2 on `#`.
-- [ ] Phase 2 correctly renders plaintext PIN digits, handles `*` deletion and Phase 1 cancellation, and triggers submission on `#`.
-- [ ] Submission generates a valid JSON payload string matching `{"user_id": <int>, "pin": "<str>"}`.
-- [ ] Terminal correctly renders and transitions between `AUTH_OK` greeting (3-second duration), `INVALID_PIN` attempt warning, `USER_LOCKED` active countdown timer, and `USER_NOT_FOUND`.
-- [ ] Keypad scanning and OLED rendering operate on Core 1 decoupled from network operations via FreeRTOS Queues.
+- [x] OLED initializes cleanly on I2C pins without column shifting or graphical corruption.
+- [x] Matrix keypad scans keys responsively without key bounce or spurious double-triggers.
+- [x] Phase 1 correctly accepts multi-digit User IDs, handles `*` backspacing, and advances to Phase 2 on `#`.
+- [x] Phase 2 correctly renders plaintext PIN digits, handles `*` deletion and Phase 1 cancellation, and triggers submission on `#`.
+- [x] Submission generates a valid JSON payload string matching `{"user_id": <int>, "pin": "<str>"}`.
+- [x] Terminal correctly renders and transitions between `AUTH_OK` greeting (3-second duration), `INVALID_PIN` attempt warning, `USER_LOCKED` active countdown timer, and `USER_NOT_FOUND`.
+- [x] Keypad scanning and OLED rendering operate on Core 1 decoupled from network operations via FreeRTOS Queues.
+
