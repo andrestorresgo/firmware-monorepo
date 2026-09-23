@@ -4,14 +4,18 @@
 
 **Blocked by:** 02: Two-Step Operator Authentication Gate and Per-User Lockout
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Create central telemetry store/hook managing authoritative `system_state`, `shape_counts`, and `recent_audits`.
-- [ ] Implement initial state hydration calling `GET /api/v1/state` on dashboard mount.
-- [ ] Implement direct HiveMQ Cloud WebSocket connection subscribing to `factory/telemetry` and `factory/rollover`.
-- [ ] Implement seamless polling fallback (every 2.5s) when WebSocket connection is offline or degraded.
-- [ ] Render system status bar with live MQTT connection indicator and DC motor drive status (`RUNNING` / `HALTED`).
-- [ ] Render emergency alert banner (`variant="destructive"`) at the top of the dashboard whenever `is_paused: true` is reported.
-- [ ] Verification tests for state hydration, telemetry decoding, and fallback polling behavior.
+- [x] Create central telemetry store/hook managing authoritative `system_state`, `shape_counts`, and `recent_audits`.
+- [x] Implement initial state hydration calling `GET /api/v1/state` on dashboard mount.
+- [x] Implement direct HiveMQ Cloud WebSocket connection subscribing to `factory/telemetry` and `factory/rollover`.
+- [x] Implement seamless polling fallback (every 2.5s) when WebSocket connection is offline or degraded.
+- [x] Render system status bar with live MQTT connection indicator and DC motor drive status (`RUNNING` / `HALTED`).
+- [x] Render emergency alert banner (`variant="destructive"`) at the top of the dashboard whenever `is_paused: true` is reported.
+- [x] Verification tests for state hydration, telemetry decoding, and fallback polling behavior.
 
 ## Comments
+- Implemented `TelemetryEngine` and pure state reducer `applyTelemetryMessage`/`applyRolloverMessage`.
+- Established direct HiveMQ Cloud WebSocket connection with automatic 2.5s fallback REST polling during disconnection.
+- Created `MachinePauseBanner` (`variant="destructive"`) and `SystemStatusBar` displaying live DC motor drive (`RUNNING` / `HALTED / DE-ENERGIZED`) and transport channel indicators.
+- Verified across 53 unit tests passing in `dashboard-ui`.
