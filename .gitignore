@@ -17,3 +17,6 @@
 
 # backend
 backend-service/
+
+# dashboard
+dashboard-ui/
