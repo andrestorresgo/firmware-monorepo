@@ -14,3 +14,6 @@
 !**/secrets.h.example
 *.env
 *.env.local
+
+# backend
+backend-service/
