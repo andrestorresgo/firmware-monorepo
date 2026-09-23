@@ -4,14 +4,19 @@
 
 **Blocked by:** 03: Hybrid Telemetry Engine and Machine Pause Safety Banner
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Build 3-bit `BinaryBitIndicator` component rendering 3 pills ($2^2, 2^1, 2^0$) with semantic active/muted states.
-- [ ] Build `ShapeCard` component using standard shadcn `Card`, `Badge`, and Lucide icons (`Circle`, `Triangle`, `Square`).
-- [ ] Map shapes to default tokens: Circle -> `destructive`, Triangle -> `primary` (emerald), Square -> `secondary`/`accent`.
-- [ ] Display live buffer decimal count ($0$ to $5$) and cumulative lifetime total (`total_lifetime`) on each card.
-- [ ] Update live bits immediately when `factory/telemetry` frames (`red_count`, `green_count`, `blue_count`) arrive.
-- [ ] Increment lifetime total and reset live buffer when `factory/rollover` batch events occur.
-- [ ] Verification tests for binary bit decomposition logic and real-time counter updates.
+- [x] Build 3-bit `BinaryBitIndicator` component rendering 3 pills ($2^2, 2^1, 2^0$) with semantic active/muted states.
+- [x] Build `ShapeCard` component using standard shadcn `Card`, `Badge`, and Lucide icons (`Circle`, `Triangle`, `Square`).
+- [x] Map shapes to default tokens: Circle -> `destructive`, Triangle -> `primary` (emerald), Square -> `secondary`/`accent`.
+- [x] Display live buffer decimal count ($0$ to $5$) and cumulative lifetime total (`total_lifetime`) on each card.
+- [x] Update live bits immediately when `factory/telemetry` frames (`red_count`, `green_count`, `blue_count`) arrive.
+- [x] Increment lifetime total and reset live buffer when `factory/rollover` batch events occur.
+- [x] Verification tests for binary bit decomposition logic and real-time counter updates.
 
 ## Comments
+- Implemented `getThreeBitDecomposition` pure function in `src/lib/binary.ts` decomposing buffer counts (0–5) into 3 bits arranged MSB-to-LSB ($2^2, 2^1, 2^0$) with extensive unit test coverage.
+- Built `BinaryBitIndicator` rendering 3 pills with semantic active/muted states matching Board B's physical LED banks.
+- Built `ShapeCard` with standard shadcn `Card`, `Badge`, Lucide icons, capacity progress bar, Observation Delay hold indicator, and cumulative lifetime total tracking.
+- Built `ShapeTelemetryGrid` rendering the responsive 3-column layout integrated into `AuthenticatedWorkspace` in `App.tsx`.
+- Verified across 76 passing tests in `dashboard-ui`.
