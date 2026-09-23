@@ -16,7 +16,7 @@
 *.env.local
 
 # backend
-backend-service/
+/backend-service/
 
 # dashboard
-dashboard-ui/
+/dashboard-ui/
