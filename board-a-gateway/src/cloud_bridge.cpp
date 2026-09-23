@@ -3,7 +3,14 @@
 #include "cloud_bridge.h"
 #include <Arduino.h>
 
+struct EspNowRxMessage {
+    uint8_t mac[6];
+    uint8_t data[MAX_PAYLOAD_SIZE + sizeof(FrameHeader)];
+    int len;
+};
+
 CloudBridge* CloudBridge::s_instance = nullptr;
+
 
 CloudBridge::CloudBridge(QueueHandle_t auth_req_queue,
                          QueueHandle_t auth_resp_queue,
@@ -19,10 +26,15 @@ CloudBridge::CloudBridge(QueueHandle_t auth_req_queue,
       last_beacon_ms_(0),
       last_mqtt_reconnect_ms_(0),
       last_wifi_check_ms_(0),
-      last_status_publish_ms_(0) {
+      last_status_publish_ms_(0),
+      espnow_rx_queue_(NULL),
+      actuator_paired_(false) {
     memset(mac_address_, 0, sizeof(mac_address_));
+    memset(actuator_mac_, 0, sizeof(actuator_mac_));
+    espnow_rx_queue_ = xQueueCreate(8, sizeof(EspNowRxMessage));
     s_instance = this;
 }
+
 
 void CloudBridge::begin() {
     Serial.println(F("[CloudBridge] Initializing Wi-Fi Station mode..."));
@@ -50,8 +62,10 @@ void CloudBridge::loop() {
     check_mqtt();
     broadcast_beacon();
     process_outgoing_auth();
+    process_espnow_rx();
     publish_network_status(false);
 }
+
 
 bool CloudBridge::is_wifi_connected() const {
     return wifi_connected_;
@@ -105,6 +119,8 @@ void CloudBridge::setup_esp_now() {
     if (!esp_now_initialized_) {
         if (esp_now_init() == ESP_OK) {
             esp_now_initialized_ = true;
+            esp_now_register_recv_cb(CloudBridge::espnow_recv_callback);
+
             esp_now_peer_info_t peer = {};
             memset(peer.peer_addr, 0xFF, 6); // Broadcast MAC
             peer.channel = wifi_channel_;
@@ -176,8 +192,8 @@ void CloudBridge::broadcast_beacon() {
     }
 
     uint32_t now = millis();
-    // 500 ms periodic discovery beacon broadcast
-    if (now - last_beacon_ms_ >= 500) {
+    // 100 ms periodic discovery beacon broadcast for fast Actuator channel scanning (<2s)
+    if (now - last_beacon_ms_ >= 100) {
         last_beacon_ms_ = now;
 
         uint8_t buffer[64];
@@ -191,6 +207,77 @@ void CloudBridge::broadcast_beacon() {
         }
     }
 }
+
+void CloudBridge::espnow_recv_callback(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+    if (!s_instance || !s_instance->espnow_rx_queue_ || !mac_addr || !data || data_len <= 0) {
+        return;
+    }
+    if ((size_t)data_len > sizeof(EspNowRxMessage::data)) {
+        return;
+    }
+    EspNowRxMessage msg = {};
+    memcpy(msg.mac, mac_addr, 6);
+    memcpy(msg.data, data, (size_t)data_len);
+    msg.len = data_len;
+    xQueueSend(s_instance->espnow_rx_queue_, &msg, 0);
+}
+
+void CloudBridge::process_espnow_rx() {
+    if (!espnow_rx_queue_) return;
+
+    EspNowRxMessage msg = {};
+    while (xQueueReceive(espnow_rx_queue_, &msg, 0) == pdTRUE) {
+        EspNowPacket pkt = {};
+        if (!unpack_packet(msg.data, (size_t)msg.len, &pkt)) {
+            Serial.println(F("[CloudBridge] WARN: Received invalid ESP-NOW packet"));
+            continue;
+        }
+
+        if (pkt.header.opcode == OPCODE_BEACON_ACK) {
+            Serial.printf("[CloudBridge] Received BEACON_ACK from Actuator MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                          pkt.payload.beacon_ack.actuator_mac[0], pkt.payload.beacon_ack.actuator_mac[1],
+                          pkt.payload.beacon_ack.actuator_mac[2], pkt.payload.beacon_ack.actuator_mac[3],
+                          pkt.payload.beacon_ack.actuator_mac[4], pkt.payload.beacon_ack.actuator_mac[5]);
+
+            memcpy(actuator_mac_, pkt.payload.beacon_ack.actuator_mac, 6);
+            actuator_paired_ = true;
+
+            esp_now_peer_info_t peer = {};
+            memcpy(peer.peer_addr, actuator_mac_, 6);
+            peer.channel = wifi_channel_;
+            peer.encrypt = false;
+            peer.ifidx = WIFI_IF_STA;
+
+            if (esp_now_is_peer_exist(actuator_mac_)) {
+                esp_now_mod_peer(&peer);
+            } else {
+                esp_now_add_peer(&peer);
+            }
+        } else if (pkt.header.opcode == OPCODE_TELEMETRY) {
+            Serial.printf("[CloudBridge] Received Telemetry: paused=%d, motor=%d, servo=%d, R=%d, G=%d, B=%d\n",
+                          pkt.payload.telemetry.is_paused,
+                          pkt.payload.telemetry.motor_state,
+                          pkt.payload.telemetry.servo_state,
+                          pkt.payload.telemetry.red_count,
+                          pkt.payload.telemetry.green_count,
+                          pkt.payload.telemetry.blue_count);
+
+            if (mqtt_connected_) {
+                char json_buf[160];
+                if (format_telemetry_json(&pkt.payload.telemetry, json_buf, sizeof(json_buf))) {
+                    if (mqtt_client_.publish("factory/telemetry", json_buf)) {
+                        Serial.printf("[CloudBridge] Published telemetry to HiveMQ: %s\n", json_buf);
+                    } else {
+                        Serial.println(F("[CloudBridge] ERR: Failed to publish telemetry to HiveMQ"));
+                    }
+                }
+            } else {
+                Serial.println(F("[CloudBridge] WARN: Dropped telemetry publish, MQTT not connected"));
+            }
+        }
+    }
+}
+
 
 void CloudBridge::process_outgoing_auth() {
     if (auth_req_queue_ == NULL) return;

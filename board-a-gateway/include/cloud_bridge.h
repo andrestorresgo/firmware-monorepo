@@ -47,15 +47,22 @@ private:
     uint32_t last_wifi_check_ms_;
     uint32_t last_status_publish_ms_;
 
+    QueueHandle_t espnow_rx_queue_;
+    bool actuator_paired_;
+    uint8_t actuator_mac_[6];
+
     void check_wifi();
     void check_mqtt();
     void broadcast_beacon();
     void process_outgoing_auth();
+    void process_espnow_rx();
     void publish_network_status(bool force = false);
     void setup_esp_now();
 
     static void mqtt_callback(char* topic, uint8_t* payload, unsigned int length);
+    static void espnow_recv_callback(const uint8_t *mac_addr, const uint8_t *data, int data_len);
     static CloudBridge* s_instance;
 };
+
 
 #endif // !UNIT_TEST

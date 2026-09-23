@@ -137,6 +137,48 @@ void test_network_status_helper(void) {
     TEST_ASSERT_TRUE(is_system_online(&status));
 }
 
+void test_format_telemetry_json_valid(void) {
+    TelemetryPayload payload = {};
+    payload.is_paused = 0;
+    payload.motor_state = 1;
+    payload.servo_state = SERVO_OPEN; // 1
+    payload.red_count = 2;
+    payload.green_count = 5;
+    payload.blue_count = 0;
+    payload.uptime_ms = 12345;
+
+    char buf[128];
+    bool ok = format_telemetry_json(&payload, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING("{\"is_paused\":false,\"motor_state\":true,\"servo_state\":true,\"red_count\":2,\"green_count\":5,\"blue_count\":0}", buf);
+
+    // Another case with paused = true, motor = false, servo = closed
+    payload.is_paused = 1;
+    payload.motor_state = 0;
+    payload.servo_state = SERVO_CLOSED; // 0
+    payload.red_count = 4;
+    payload.green_count = 1;
+    payload.blue_count = 3;
+
+    ok = format_telemetry_json(&payload, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(ok);
+    TEST_ASSERT_EQUAL_STRING("{\"is_paused\":true,\"motor_state\":false,\"servo_state\":false,\"red_count\":4,\"green_count\":1,\"blue_count\":3}", buf);
+}
+
+void test_format_telemetry_json_boundary_and_null(void) {
+    TelemetryPayload payload = {};
+    char buf[128];
+
+    // NULL pointer handling
+    TEST_ASSERT_FALSE(format_telemetry_json(NULL, buf, sizeof(buf)));
+    TEST_ASSERT_FALSE(format_telemetry_json(&payload, NULL, sizeof(buf)));
+    TEST_ASSERT_FALSE(format_telemetry_json(&payload, buf, 0));
+
+    // Buffer too small
+    char small_buf[30];
+    TEST_ASSERT_FALSE(format_telemetry_json(&payload, small_buf, sizeof(small_buf)));
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -151,5 +193,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_build_beacon_packet_success);
     RUN_TEST(test_build_beacon_packet_validation_errors);
     RUN_TEST(test_network_status_helper);
+    RUN_TEST(test_format_telemetry_json_valid);
+    RUN_TEST(test_format_telemetry_json_boundary_and_null);
     return UNITY_END();
 }
+

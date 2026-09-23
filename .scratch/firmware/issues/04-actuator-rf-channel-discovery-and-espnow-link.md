@@ -4,11 +4,12 @@
 
 **Blocked by:** 01: Project Scaffolding, Library Configuration, and Protocol Definitions, 03: Gateway (Board A) Cloud Connectivity and Channel Beacon
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Actuator automatically sweeps channels 1 to 13 on boot and detects the Gateway's beacon within 2 seconds.
-- [ ] Actuator locks its radio to the discovered channel and registers the Gateway peer successfully.
-- [ ] Bidirectional ESP-NOW packets pass frame validation using magic byte `0xA5`.
-- [ ] Actuator emits Telemetry Heartbeats every 3 seconds over ESP-NOW.
-- [ ] Gateway receives telemetry frames on Core 0 and publishes JSON payloads to `factory/telemetry`.
-- [ ] Disconnections or channel loss trigger automatic re-scanning on the Actuator without locking up the MCU.
+- [x] Actuator automatically sweeps channels 1 to 13 on boot and detects the Gateway's beacon within 2 seconds.
+- [x] Actuator locks its radio to the discovered channel and registers the Gateway peer successfully.
+- [x] Bidirectional ESP-NOW packets pass frame validation using magic byte `0xA5`.
+- [x] Actuator emits Telemetry Heartbeats every 3 seconds over ESP-NOW.
+- [x] Gateway receives telemetry frames on Core 0 and publishes JSON payloads to `factory/telemetry`.
+- [x] Disconnections or channel loss trigger automatic re-scanning on the Actuator without locking up the MCU.
+

@@ -81,3 +81,21 @@ int build_beacon_packet(uint8_t wifi_channel, const uint8_t* gateway_mac, uint32
 
     return pack_packet(&pkt, out_buf, max_len);
 }
+
+bool format_telemetry_json(const struct TelemetryPayload* telemetry, char* out_buf, size_t max_len) {
+    if (!telemetry || !out_buf || max_len == 0) {
+        return false;
+    }
+
+    const char* is_paused_str = telemetry->is_paused ? "true" : "false";
+    const char* motor_state_str = telemetry->motor_state ? "true" : "false";
+    const char* servo_state_str = (telemetry->servo_state != 0) ? "true" : "false";
+
+    int written = snprintf(out_buf, max_len,
+                           "{\"is_paused\":%s,\"motor_state\":%s,\"servo_state\":%s,\"red_count\":%u,\"green_count\":%u,\"blue_count\":%u}",
+                           is_paused_str, motor_state_str, servo_state_str,
+                           telemetry->red_count, telemetry->green_count, telemetry->blue_count);
+
+    return (written > 0 && (size_t)written < max_len);
+}
+
