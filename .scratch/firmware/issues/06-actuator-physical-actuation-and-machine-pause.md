@@ -4,13 +4,13 @@
 
 **Blocked by:** 05: Actuator (Board B) Binary LED Counting, Observation Delay, and Batch Rollover
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Abstract `HBridgeMotor` class cleanly drives motor forward with 80% duty cycle via ESP32 `ledc`.
-- [ ] Gateway subscribes to `factory/actuator/servo` and forwards commands (`OPEN` / `CLOSED`) over ESP-NOW.
-- [ ] Actuator moves the servo gate between 0° and 90° via `ESP32Servo` on `GPIO 13` upon command.
-- [ ] Push button on `GPIO 25` toggles Machine Pause state with a 50ms software debounce.
-- [ ] Entering Machine Pause immediately cuts DC motor drive to 0 and suppresses servo gate commands.
-- [ ] Entering Machine Pause blocks shape detection increments.
-- [ ] Exiting Machine Pause restores DC motor power, unlocks gate commands, and preserves LED binary counts.
-- [ ] Every transition of the pause button or servo gate emits an immediate telemetry frame over ESP-NOW to update the cloud.
+- [x] Abstract `HBridgeMotor` class cleanly drives motor forward with 80% duty cycle via ESP32 `ledc`.
+- [x] Gateway subscribes to `factory/actuator/servo` and forwards commands (`OPEN` / `CLOSED`) over ESP-NOW.
+- [x] Actuator moves the servo gate between 0° and 90° via `ESP32Servo` on `GPIO 13` upon command.
+- [x] Push button on `GPIO 25` toggles Machine Pause state with a 50ms software debounce.
+- [x] Entering Machine Pause immediately cuts DC motor drive to 0 and suppresses servo gate commands.
+- [x] Entering Machine Pause blocks shape detection increments.
+- [x] Exiting Machine Pause restores DC motor power, unlocks gate commands, and preserves LED binary counts.
+- [x] Every transition of the pause button or servo gate emits an immediate telemetry frame over ESP-NOW to update the cloud.

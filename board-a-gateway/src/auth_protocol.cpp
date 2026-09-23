@@ -183,4 +183,104 @@ bool format_rollover_json(const struct BatchRolloverPayload* rollover, char* out
     return (written > 0 && (size_t)written < max_len);
 }
 
+bool parse_servo_command_payload(const char* payload, size_t len, uint8_t* out_servo_state) {
+    if (!payload || len == 0 || !out_servo_state) {
+        return false;
+    }
+
+    // Trim leading whitespace
+    while (len > 0 && (*payload == ' ' || *payload == '\t' || *payload == '\r' || *payload == '\n' || *payload == '\"')) {
+        payload++;
+        len--;
+    }
+    // Trim trailing whitespace
+    while (len > 0 && (payload[len - 1] == ' ' || payload[len - 1] == '\t' || payload[len - 1] == '\r' || payload[len - 1] == '\n' || payload[len - 1] == '\"')) {
+        len--;
+    }
+    if (len == 0) {
+        return false;
+    }
+
+    // If starts with '{', attempt JSON parsing
+    if (*payload == '{') {
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, payload, len);
+        if (!err) {
+            // Check "state", "position", "command"
+            const char* str_val = doc["state"] | doc["position"] | doc["command"] | (const char*)nullptr;
+            if (str_val) {
+                if (strcasecmp(str_val, "OPEN") == 0 || strcmp(str_val, "1") == 0 || strcasecmp(str_val, "true") == 0) {
+                    *out_servo_state = SERVO_OPEN;
+                    return true;
+                } else if (strcasecmp(str_val, "CLOSED") == 0 || strcasecmp(str_val, "CLOSE") == 0 || strcmp(str_val, "0") == 0 || strcasecmp(str_val, "false") == 0) {
+                    *out_servo_state = SERVO_CLOSED;
+                    return true;
+                }
+            }
+
+            // Check numeric "servo_state", "state", "position"
+            if (doc["servo_state"].is<int>()) {
+                int val = doc["servo_state"].as<int>();
+                if (val == 0 || val == 1) {
+                    *out_servo_state = (uint8_t)val;
+                    return true;
+                }
+            }
+            if (doc["state"].is<int>()) {
+                int val = doc["state"].as<int>();
+                if (val == 0 || val == 1) {
+                    *out_servo_state = (uint8_t)val;
+                    return true;
+                }
+            }
+            if (doc["position"].is<int>()) {
+                int val = doc["position"].as<int>();
+                if (val == 0 || val == 1) {
+                    *out_servo_state = (uint8_t)val;
+                    return true;
+                }
+            }
+        }
+    }
+
+    // Fallback: check raw string payload (e.g. "OPEN", "CLOSED", "1", "0")
+    if ((len == 4 && strncasecmp(payload, "OPEN", 4) == 0) ||
+        (len == 1 && *payload == '1') ||
+        (len == 4 && strncasecmp(payload, "true", 4) == 0)) {
+        *out_servo_state = SERVO_OPEN;
+        return true;
+    } else if ((len == 6 && strncasecmp(payload, "CLOSED", 6) == 0) ||
+               (len == 5 && strncasecmp(payload, "CLOSE", 5) == 0) ||
+               (len == 1 && *payload == '0') ||
+               (len == 5 && strncasecmp(payload, "false", 5) == 0)) {
+        *out_servo_state = SERVO_CLOSED;
+        return true;
+    }
+
+    return false;
+}
+
+int build_servo_command_packet(uint8_t servo_state, uint8_t* out_buf, size_t max_len) {
+    if (servo_state != SERVO_CLOSED && servo_state != SERVO_OPEN) {
+        return -1;
+    }
+    if (!out_buf) {
+        return -1;
+    }
+    size_t required_len = sizeof(struct FrameHeader) + sizeof(struct ServoCommandPayload);
+    if (max_len < required_len) {
+        return -1;
+    }
+
+    struct EspNowPacket pkt;
+    memset(&pkt, 0, sizeof(pkt));
+    pkt.header.magic = ESPNOW_MAGIC_BYTE;
+    pkt.header.opcode = OPCODE_SERVO_COMMAND;
+    pkt.header.payload_len = sizeof(struct ServoCommandPayload);
+    pkt.payload.servo_command.servo_state = servo_state;
+
+    return pack_packet(&pkt, out_buf, max_len);
+}
+
+
 

@@ -9,6 +9,10 @@
 #include "actuator_state.h"
 #include "led_bank_driver.h"
 #include "counting_manager.h"
+#include "hbridge_motor.h"
+#include "servo_gate_driver.h"
+#include "button_driver.h"
+#include "actuation_manager.h"
 
 // ESP-NOW Receive Queue Item
 struct EspNowRxMsg {
@@ -22,12 +26,17 @@ static ActuatorState s_actuator_state;
 static LinkManager s_link_manager(120, 3000, 7000, 3); // 120ms dwell, 3s heartbeat, 7s timeout, 3 failures
 static LedBankDriver s_led_driver;
 static CountingManager s_counting_manager(s_actuator_state, s_led_driver);
+static Esp32HBridgeMotor s_motor;
+static Esp32ServoGateDriver s_servo;
+static DebouncedButton s_pause_button(50);
+static ActuationManager s_actuation_manager(s_actuator_state, s_motor, s_servo, s_pause_button);
 static uint8_t s_my_mac[6];
 
 // FreeRTOS Queues
 static QueueHandle_t s_rx_queue = NULL;
 static QueueHandle_t s_event_telemetry_queue = NULL;
 static QueueHandle_t s_detection_queue = NULL;
+static QueueHandle_t s_servo_queue = NULL;
 static QueueHandle_t s_tx_rollover_queue = NULL;
 
 // ESP-NOW Callbacks
@@ -143,8 +152,16 @@ void networkTask(void* pvParameters) {
                         Serial.println(F("[Actuator] WARN: Detection queue full, dropping packet"));
                     }
                 }
+            } else if (rx_pkt.header.opcode == OPCODE_SERVO_COMMAND) {
+                s_link_manager.record_activity(now);
+                Serial.printf("[Actuator] Received SERVO_COMMAND from Gateway: state=%u\n",
+                              rx_pkt.payload.servo_command.servo_state);
+                if (s_servo_queue) {
+                    if (xQueueSend(s_servo_queue, &rx_pkt.payload.servo_command, 0) != pdTRUE) {
+                        Serial.println(F("[Actuator] WARN: Servo queue full, dropping command"));
+                    }
+                }
             } else {
-                // Future commands from Gateway (e.g. servo) will be processed in Ticket 06
                 s_link_manager.record_activity(now);
             }
         }
@@ -208,13 +225,33 @@ void actuatorTask(void* pvParameters) {
     (void)pvParameters;
     Serial.printf("[Core %d] Actuator Control & Logic task started\n", xPortGetCoreID());
 
+    s_actuation_manager.begin();
     s_counting_manager.begin();
     TickType_t last_wake_time = xTaskGetTickCount();
 
     for (;;) {
         uint32_t now = millis();
 
-        // 1. Process incoming shape detection commands from Core 0
+        // 1. Process momentary push button on GPIO 25 (Active-LOW with INPUT_PULLUP)
+        bool raw_pressed = (digitalRead(PIN_PAUSE_BUTTON) == LOW);
+        if (s_actuation_manager.handle_pause_button(now, raw_pressed)) {
+            Serial.printf("[Actuator] Machine Pause TOGGLED -> is_paused=%d, motor_running=%d, duty=%u%%\n",
+                          s_actuation_manager.is_paused(),
+                          s_actuation_manager.is_motor_running(),
+                          s_actuation_manager.get_motor_duty());
+        }
+
+        // 2. Process incoming servo commands from Core 0
+        ServoCommandPayload servo_cmd = {};
+        while (s_servo_queue && xQueueReceive(s_servo_queue, &servo_cmd, 0) == pdTRUE) {
+            bool state_changed = s_actuation_manager.handle_servo_command(servo_cmd.servo_state);
+            Serial.printf("[Actuator] Handled servo command (%u): changed=%d, angle=%d, is_paused=%d\n",
+                          servo_cmd.servo_state, state_changed,
+                          s_actuation_manager.get_servo_angle(),
+                          s_actuation_manager.is_paused());
+        }
+
+        // 3. Process incoming shape detection commands from Core 0
         ShapeDetectionPayload det = {};
         while (s_detection_queue && xQueueReceive(s_detection_queue, &det, 0) == pdTRUE) {
             bool accepted = s_counting_manager.handle_shape_detection(det.shape_id, now);
@@ -224,7 +261,7 @@ void actuatorTask(void* pvParameters) {
                           s_counting_manager.is_in_observation_delay(det.shape_id));
         }
 
-        // 2. Advance 800ms Observation Delay timers and check for Batch Rollovers
+        // 4. Advance 800ms Observation Delay timers and check for Batch Rollovers
         BatchRolloverPayload rollover = {};
         while (s_counting_manager.tick(now, &rollover)) {
             Serial.printf("[Actuator] Observation delay expired! Batch rollover for shape %u, count reset to 0\n",
@@ -236,7 +273,7 @@ void actuatorTask(void* pvParameters) {
             }
         }
 
-        // 3. Check if state changed, trigger event telemetry
+        // 5. Check if state changed, trigger event telemetry
         if (s_actuator_state.is_dirty()) {
             s_actuator_state.clear_dirty();
             if (s_event_telemetry_queue) {
@@ -256,13 +293,17 @@ void setup() {
     Serial.println(F("[Actuator Board B] Initializing Firmware"));
     Serial.println(F("========================================"));
 
+    // Configure push button GPIO with internal pullup
+    pinMode(PIN_PAUSE_BUTTON, INPUT_PULLUP);
+
     // Allocate FreeRTOS Queues
     s_rx_queue = xQueueCreate(8, sizeof(EspNowRxMsg));
     s_event_telemetry_queue = xQueueCreate(4, sizeof(uint32_t));
     s_detection_queue = xQueueCreate(8, sizeof(ShapeDetectionPayload));
+    s_servo_queue = xQueueCreate(4, sizeof(ServoCommandPayload));
     s_tx_rollover_queue = xQueueCreate(4, sizeof(BatchRolloverPayload));
 
-    if (!s_rx_queue || !s_event_telemetry_queue || !s_detection_queue || !s_tx_rollover_queue) {
+    if (!s_rx_queue || !s_event_telemetry_queue || !s_detection_queue || !s_servo_queue || !s_tx_rollover_queue) {
         Serial.println(F("[FATAL] Failed to create FreeRTOS queues!"));
         while (1) { delay(1000); }
     }

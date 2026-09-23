@@ -270,6 +270,93 @@ void test_format_rollover_json(void) {
     TEST_ASSERT_FALSE(format_rollover_json(&rollover, tiny_buf, sizeof(tiny_buf)));
 }
 
+void test_parse_servo_command_payload(void) {
+    uint8_t state = 255;
+
+    // Raw strings
+    TEST_ASSERT_TRUE(parse_servo_command_payload("OPEN", 4, &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, state);
+
+    TEST_ASSERT_TRUE(parse_servo_command_payload("open", 4, &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, state);
+
+    TEST_ASSERT_TRUE(parse_servo_command_payload("CLOSED", 6, &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_CLOSED, state);
+
+    TEST_ASSERT_TRUE(parse_servo_command_payload("closed", 6, &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_CLOSED, state);
+
+    TEST_ASSERT_TRUE(parse_servo_command_payload("1", 1, &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, state);
+
+    TEST_ASSERT_TRUE(parse_servo_command_payload("0", 1, &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_CLOSED, state);
+
+    // With whitespace and quotes
+    const char* str_quoted = "  \"OPEN\" \r\n";
+    TEST_ASSERT_TRUE(parse_servo_command_payload(str_quoted, strlen(str_quoted), &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, state);
+
+    // JSON formats
+    const char* json_open = "{\"state\":\"OPEN\"}";
+    TEST_ASSERT_TRUE(parse_servo_command_payload(json_open, strlen(json_open), &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, state);
+
+    const char* json_closed = "{\"state\":\"CLOSED\"}";
+    TEST_ASSERT_TRUE(parse_servo_command_payload(json_closed, strlen(json_closed), &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_CLOSED, state);
+
+    const char* json_num1 = "{\"servo_state\":1}";
+    TEST_ASSERT_TRUE(parse_servo_command_payload(json_num1, strlen(json_num1), &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, state);
+
+    const char* json_num0 = "{\"servo_state\":0}";
+    TEST_ASSERT_TRUE(parse_servo_command_payload(json_num0, strlen(json_num0), &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_CLOSED, state);
+
+    const char* json_pos = "{\"position\":\"OPEN\"}";
+    TEST_ASSERT_TRUE(parse_servo_command_payload(json_pos, strlen(json_pos), &state));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, state);
+
+    // Negative / invalid cases
+    TEST_ASSERT_FALSE(parse_servo_command_payload(NULL, 10, &state));
+    TEST_ASSERT_FALSE(parse_servo_command_payload("OPEN", 0, &state));
+    TEST_ASSERT_FALSE(parse_servo_command_payload("OPEN", 4, NULL));
+    TEST_ASSERT_FALSE(parse_servo_command_payload("UNKNOWN", 7, &state));
+    TEST_ASSERT_FALSE(parse_servo_command_payload("   ", 3, &state));
+    TEST_ASSERT_FALSE(parse_servo_command_payload("{\"state\":\"INVALID\"}", 19, &state));
+    TEST_ASSERT_FALSE(parse_servo_command_payload("{malformed json", 15, &state));
+}
+
+void test_build_servo_command_packet(void) {
+    uint8_t buffer[64];
+
+    // Build SERVO_OPEN packet
+    int len_open = build_servo_command_packet(SERVO_OPEN, buffer, sizeof(buffer));
+    TEST_ASSERT_GREATER_THAN(0, len_open);
+    TEST_ASSERT_EQUAL(sizeof(struct FrameHeader) + sizeof(struct ServoCommandPayload), len_open);
+
+    struct EspNowPacket pkt_open;
+    TEST_ASSERT_TRUE(unpack_packet(buffer, len_open, &pkt_open));
+    TEST_ASSERT_EQUAL_UINT8(ESPNOW_MAGIC_BYTE, pkt_open.header.magic);
+    TEST_ASSERT_EQUAL_UINT8(OPCODE_SERVO_COMMAND, pkt_open.header.opcode);
+    TEST_ASSERT_EQUAL_UINT8(sizeof(struct ServoCommandPayload), pkt_open.header.payload_len);
+    TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, pkt_open.payload.servo_command.servo_state);
+
+    // Build SERVO_CLOSED packet
+    int len_closed = build_servo_command_packet(SERVO_CLOSED, buffer, sizeof(buffer));
+    TEST_ASSERT_GREATER_THAN(0, len_closed);
+    struct EspNowPacket pkt_closed;
+    TEST_ASSERT_TRUE(unpack_packet(buffer, len_closed, &pkt_closed));
+    TEST_ASSERT_EQUAL_UINT8(SERVO_CLOSED, pkt_closed.payload.servo_command.servo_state);
+
+    // Validation failures
+    TEST_ASSERT_EQUAL(-1, build_servo_command_packet(2, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(-1, build_servo_command_packet(255, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(-1, build_servo_command_packet(SERVO_OPEN, NULL, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(-1, build_servo_command_packet(SERVO_OPEN, buffer, 4)); // too small
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -289,7 +376,10 @@ int main(int argc, char** argv) {
     RUN_TEST(test_parse_shape_detection_json);
     RUN_TEST(test_build_shape_detection_packet);
     RUN_TEST(test_format_rollover_json);
+    RUN_TEST(test_parse_servo_command_payload);
+    RUN_TEST(test_build_servo_command_packet);
     return UNITY_END();
 }
+
 
 

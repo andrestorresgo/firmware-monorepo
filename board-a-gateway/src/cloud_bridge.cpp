@@ -184,6 +184,13 @@ void CloudBridge::check_mqtt() {
                     Serial.println(F("[CloudBridge] ERR: Failed to subscribe to 'factory/detections'"));
                 }
 
+                // Subscribe to servo actuator topic
+                if (mqtt_client_.subscribe("factory/actuator/servo")) {
+                    Serial.println(F("[CloudBridge] Subscribed to 'factory/actuator/servo'"));
+                } else {
+                    Serial.println(F("[CloudBridge] ERR: Failed to subscribe to 'factory/actuator/servo'"));
+                }
+
                 publish_network_status(true);
             } else {
                 Serial.printf("[CloudBridge] MQTT connect failed, state=%d. Retrying in 3s...\n",
@@ -375,6 +382,15 @@ void CloudBridge::mqtt_callback(char* topic, uint8_t* payload, unsigned int leng
         } else {
             Serial.println(F("[CloudBridge] ERR: Failed to parse shape detection JSON!"));
         }
+    } else if (strcmp(topic, "factory/actuator/servo") == 0) {
+        uint8_t servo_state = 0;
+        if (parse_servo_command_payload((const char*)payload, (size_t)length, &servo_state)) {
+            Serial.printf("[CloudBridge] Parsed Servo Command: state=%u (%s)\n",
+                          servo_state, (servo_state == SERVO_OPEN) ? "OPEN" : "CLOSED");
+            s_instance->forward_servo_command(servo_state);
+        } else {
+            Serial.println(F("[CloudBridge] ERR: Failed to parse servo command payload!"));
+        }
     }
 }
 
@@ -397,6 +413,27 @@ void CloudBridge::forward_shape_detection(const struct ShapeDetectionPayload* de
                       det->detection_id, det->shape_id);
     } else {
         Serial.printf("[CloudBridge] ERR: esp_now_send shape detection failed, err=%d\n", res);
+    }
+}
+
+void CloudBridge::forward_servo_command(uint8_t servo_state) {
+    if (!esp_now_initialized_) return;
+
+    uint8_t buffer[64];
+    int len = build_servo_command_packet(servo_state, buffer, sizeof(buffer));
+    if (len <= 0) return;
+
+    const uint8_t* target_mac = actuator_paired_ ? actuator_mac_ : nullptr;
+    uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (!target_mac) {
+        target_mac = bcast;
+    }
+
+    esp_err_t res = esp_now_send(target_mac, buffer, (size_t)len);
+    if (res == ESP_OK) {
+        Serial.printf("[CloudBridge] Forwarded Servo Command (state=%u) via ESP-NOW\n", servo_state);
+    } else {
+        Serial.printf("[CloudBridge] ERR: esp_now_send servo command failed, err=%d\n", res);
     }
 }
 

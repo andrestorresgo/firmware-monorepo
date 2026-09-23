@@ -41,6 +41,15 @@ int build_shape_detection_packet(uint8_t shape_id, uint32_t detection_id, uint8_
 // Returns true if output buffer was sufficiently large and formatting succeeded
 bool format_rollover_json(const struct BatchRolloverPayload* rollover, char* out_buf, size_t max_len);
 
+// Parses string or JSON payload received on factory/actuator/servo into servo state (SERVO_CLOSED=0, SERVO_OPEN=1)
+// Supports "OPEN", "CLOSED", "open", "closed", "1", "0", and JSON {"state": "OPEN"}, {"servo_state": 1}, etc.
+// Returns true if parsing was successful and state was valid
+bool parse_servo_command_payload(const char* payload, size_t len, uint8_t* out_servo_state);
+
+// Constructs and packs a validated ESP-NOW servo command packet (OPCODE_SERVO_COMMAND) ready for transmission
+// Returns the total packed frame length in bytes on success, or negative on validation error
+int build_servo_command_packet(uint8_t servo_state, uint8_t* out_buf, size_t max_len);
+
 #ifdef __cplusplus
 }
 #endif
