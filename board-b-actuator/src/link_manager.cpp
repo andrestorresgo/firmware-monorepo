@@ -60,9 +60,11 @@ bool LinkManager::handle_beacon(const struct BeaconPayload* beacon, const uint8_
     current_channel_ = beacon->wifi_channel;
     memcpy(gateway_mac_, beacon->gateway_mac, 6);
 
-    state_ = LINK_STATE_PAIRED;
+    if (state_ != LINK_STATE_PAIRED) {
+        state_ = LINK_STATE_PAIRED;
+        last_heartbeat_ms_ = now_ms;
+    }
     last_activity_ms_ = now_ms;
-    last_heartbeat_ms_ = now_ms;
     consecutive_failures_ = 0;
 
     return true;

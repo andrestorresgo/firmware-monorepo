@@ -137,6 +137,27 @@ void test_heartbeat_cadence_3_seconds(void) {
     TEST_ASSERT_TRUE(lm.should_send_heartbeat(7000));
 }
 
+void test_heartbeat_not_starved_by_intermediate_beacons(void) {
+    LinkManager lm;
+    lm.begin(0);
+
+    uint8_t gw_mac[6] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    BeaconPayload beacon = {};
+    beacon.wifi_channel = 1;
+    memcpy(beacon.gateway_mac, gw_mac, 6);
+
+    // Initial pairing beacon at 1000ms
+    lm.handle_beacon(&beacon, gw_mac, 1000);
+
+    // Intermediate beacons from Gateway arriving at 2000ms and 3000ms
+    lm.handle_beacon(&beacon, gw_mac, 2000);
+    lm.handle_beacon(&beacon, gw_mac, 3000);
+
+    // Heartbeat MUST still be due at 4000ms (1000ms initial + 3000ms interval)
+    // Intermediate beacons must not starve the Actuator's periodic telemetry heartbeat!
+    TEST_ASSERT_TRUE(lm.should_send_heartbeat(4000));
+}
+
 void test_link_loss_timeout_and_rescan(void) {
     LinkManager lm;
     lm.begin(0);
@@ -200,6 +221,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_beacon_validation_errors);
     RUN_TEST(test_build_beacon_ack_packet);
     RUN_TEST(test_heartbeat_cadence_3_seconds);
+    RUN_TEST(test_heartbeat_not_starved_by_intermediate_beacons);
     RUN_TEST(test_link_loss_timeout_and_rescan);
     RUN_TEST(test_consecutive_send_failures_trigger_rescan);
     return UNITY_END();

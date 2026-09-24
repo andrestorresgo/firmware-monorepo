@@ -252,13 +252,9 @@ void CloudBridge::process_espnow_rx() {
             continue;
         }
 
-        if (pkt.header.opcode == OPCODE_BEACON_ACK) {
-            Serial.printf("[CloudBridge] Received BEACON_ACK from Actuator MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
-                          pkt.payload.beacon_ack.actuator_mac[0], pkt.payload.beacon_ack.actuator_mac[1],
-                          pkt.payload.beacon_ack.actuator_mac[2], pkt.payload.beacon_ack.actuator_mac[3],
-                          pkt.payload.beacon_ack.actuator_mac[4], pkt.payload.beacon_ack.actuator_mac[5]);
-
-            memcpy(actuator_mac_, pkt.payload.beacon_ack.actuator_mac, 6);
+        // Auto-pair with Actuator on any valid frame received from its MAC
+        if (!actuator_paired_ || memcmp(actuator_mac_, msg.mac, 6) != 0) {
+            memcpy(actuator_mac_, msg.mac, 6);
             actuator_paired_ = true;
 
             esp_now_peer_info_t peer = {};
@@ -272,6 +268,16 @@ void CloudBridge::process_espnow_rx() {
             } else {
                 esp_now_add_peer(&peer);
             }
+            Serial.printf("[CloudBridge] Paired with Actuator: %02X:%02X:%02X:%02X:%02X:%02X (beacon interval -> 3000ms)\n",
+                          actuator_mac_[0], actuator_mac_[1], actuator_mac_[2],
+                          actuator_mac_[3], actuator_mac_[4], actuator_mac_[5]);
+        }
+
+        if (pkt.header.opcode == OPCODE_BEACON_ACK) {
+            Serial.printf("[CloudBridge] Received BEACON_ACK from Actuator MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                          pkt.payload.beacon_ack.actuator_mac[0], pkt.payload.beacon_ack.actuator_mac[1],
+                          pkt.payload.beacon_ack.actuator_mac[2], pkt.payload.beacon_ack.actuator_mac[3],
+                          pkt.payload.beacon_ack.actuator_mac[4], pkt.payload.beacon_ack.actuator_mac[5]);
         } else if (pkt.header.opcode == OPCODE_TELEMETRY) {
             Serial.printf("[CloudBridge] Received Telemetry: paused=%d, motor=%d, servo=%d, R=%d, G=%d, B=%d\n",
                           pkt.payload.telemetry.is_paused,

@@ -23,7 +23,7 @@ struct EspNowRxMsg {
 
 // Global State and Drivers
 static ActuatorState s_actuator_state;
-static LinkManager s_link_manager(120, 3000, 7000, 3); // 120ms dwell, 3s heartbeat, 7s timeout, 3 failures
+static LinkManager s_link_manager(120, 3000, 7000, 10); // 120ms dwell, 3s heartbeat, 7s timeout, 10 failures
 static LedBankDriver s_led_driver;
 static CountingManager s_counting_manager(s_actuator_state, s_led_driver);
 static Esp32HBridgeMotor s_motor;
@@ -51,13 +51,49 @@ static void espnow_recv_callback(const uint8_t *mac_addr, const uint8_t *data, i
     xQueueSend(s_rx_queue, &msg, 0);
 }
 
+// ESP-NOW Transmission Synchronization
+static SemaphoreHandle_t s_espnow_tx_sem = NULL;
+static volatile esp_now_send_status_t s_last_send_status = ESP_NOW_SEND_FAIL;
+
 static void espnow_send_callback(const uint8_t *mac_addr, esp_now_send_status_t status) {
     (void)mac_addr;
-    if (status == ESP_NOW_SEND_SUCCESS) {
-        s_link_manager.record_send_success();
-    } else {
-        s_link_manager.record_send_failure();
+    s_last_send_status = status;
+    if (s_espnow_tx_sem) {
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        xSemaphoreGiveFromISR(s_espnow_tx_sem, &xHigherPriorityTaskWoken);
+        if (xHigherPriorityTaskWoken) {
+            portYIELD_FROM_ISR();
+        }
     }
+}
+
+static bool send_espnow_packet(const uint8_t* peer_mac, const uint8_t* data, size_t len, uint32_t wait_ms = 80) {
+    if (!peer_mac || !data || len == 0) return false;
+
+    // Drain any stale completion token
+    if (s_espnow_tx_sem) {
+        xSemaphoreTake(s_espnow_tx_sem, 0);
+    }
+
+    esp_err_t err = esp_now_send(peer_mac, data, len);
+    if (err != ESP_OK) {
+        Serial.printf("[Actuator] ERR: esp_now_send returned %d\n", err);
+        return false;
+    }
+
+    if (s_espnow_tx_sem) {
+        if (xSemaphoreTake(s_espnow_tx_sem, pdMS_TO_TICKS(wait_ms)) == pdTRUE) {
+            if (s_last_send_status != ESP_NOW_SEND_SUCCESS) {
+                Serial.printf("[Actuator] WARN: esp_now_send NACKed by peer (status=%d)\n", s_last_send_status);
+                return false;
+            }
+            return true;
+        } else {
+            Serial.println(F("[Actuator] WARN: ESP-NOW TX callback timed out"));
+            return false;
+        }
+    }
+    return true;
 }
 
 // Network Task (Pinned to Core 0 per ADR-0003)
@@ -77,6 +113,8 @@ void networkTask(void* pvParameters) {
                   s_my_mac[3], s_my_mac[4], s_my_mac[5]);
 
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+
+    s_espnow_tx_sem = xSemaphoreCreateBinary();
 
     if (esp_now_init() != ESP_OK) {
         Serial.println(F("[Actuator] FATAL: Failed to initialize ESP-NOW!"));
@@ -144,7 +182,7 @@ void networkTask(void* pvParameters) {
                         uint8_t tx_buf[64];
                         int tx_len = pack_packet(&ack_pkt, tx_buf, sizeof(tx_buf));
                         if (tx_len > 0) {
-                            esp_now_send(gw_peer.peer_addr, tx_buf, (size_t)tx_len);
+                            send_espnow_packet(gw_peer.peer_addr, tx_buf, (size_t)tx_len);
                             Serial.println(F("[Actuator] Sent BEACON_ACK to Gateway, link paired!"));
                         }
                     }
@@ -191,9 +229,25 @@ void networkTask(void* pvParameters) {
                 uint8_t tx_buf[64];
                 int packed_len = pack_packet(&rollover_pkt, tx_buf, sizeof(tx_buf));
                 if (packed_len > 0) {
-                    esp_now_send(s_link_manager.get_gateway_mac(), tx_buf, (size_t)packed_len);
-                    Serial.printf("[Actuator] Emitted Batch Rollover to Gateway: shape=%u, size=%u, time=%lu\n",
-                                  rollover_msg.shape_id, rollover_msg.batch_size, (unsigned long)rollover_msg.timestamp_ms);
+                    bool sent = false;
+                    for (int attempt = 0; attempt < 5; attempt++) {
+                        if (send_espnow_packet(s_link_manager.get_gateway_mac(), tx_buf, (size_t)packed_len)) {
+                            sent = true;
+                            s_link_manager.record_send_success();
+                            break;
+                        }
+                        vTaskDelay(pdMS_TO_TICKS(40));
+                    }
+                    if (sent) {
+                        Serial.printf("[Actuator] Emitted Batch Rollover to Gateway: shape=%u, size=%u, time=%lu\n",
+                                      rollover_msg.shape_id, rollover_msg.batch_size, (unsigned long)rollover_msg.timestamp_ms);
+                    } else {
+                        s_link_manager.record_send_failure();
+                        Serial.printf("[Actuator] WARN: Failed to deliver Batch Rollover after retries: shape=%u\n",
+                                      rollover_msg.shape_id);
+                    }
+                    // Yield briefly to let Gateway radio process and bridge to HiveMQ before telemetry
+                    vTaskDelay(pdMS_TO_TICKS(50));
                 }
             }
         }
@@ -210,16 +264,20 @@ void networkTask(void* pvParameters) {
                 uint8_t tx_buf[64];
                 int packed_len = pack_packet(&telem_pkt, tx_buf, sizeof(tx_buf));
                 if (packed_len > 0) {
-                    esp_now_send(s_link_manager.get_gateway_mac(), tx_buf, (size_t)packed_len);
-                    s_link_manager.record_heartbeat_sent(now);
-                    Serial.printf("[Actuator] Emitted Telemetry (%s): pause=%d, motor=%d, servo=%d, R=%d, G=%d, B=%d\n",
-                                  event_pending ? "event" : "periodic",
-                                  telem_pkt.payload.telemetry.is_paused,
-                                  telem_pkt.payload.telemetry.motor_state,
-                                  telem_pkt.payload.telemetry.servo_state,
-                                  telem_pkt.payload.telemetry.red_count,
-                                  telem_pkt.payload.telemetry.green_count,
-                                  telem_pkt.payload.telemetry.blue_count);
+                    if (send_espnow_packet(s_link_manager.get_gateway_mac(), tx_buf, (size_t)packed_len)) {
+                        s_link_manager.record_send_success();
+                        s_link_manager.record_heartbeat_sent(now);
+                        Serial.printf("[Actuator] Emitted Telemetry (%s): pause=%d, motor=%d, servo=%d, R=%d, G=%d, B=%d\n",
+                                      event_pending ? "event" : "periodic",
+                                      telem_pkt.payload.telemetry.is_paused,
+                                      telem_pkt.payload.telemetry.motor_state,
+                                      telem_pkt.payload.telemetry.servo_state,
+                                      telem_pkt.payload.telemetry.red_count,
+                                      telem_pkt.payload.telemetry.green_count,
+                                      telem_pkt.payload.telemetry.blue_count);
+                    } else {
+                        s_link_manager.record_send_failure();
+                    }
                 }
             }
         }
