@@ -106,6 +106,13 @@ bool AuthTerminal::handle_key(char key) {
             state_ = STATE_AUTHENTICATING;
             return true;
         }
+    } else if (state_ == STATE_AUTHENTICATING) {
+        if (key == '*') {
+            // Cancel back to PIN entry
+            state_ = STATE_ENTER_PIN;
+            timer_ms_ = 0;
+            return false;
+        }
     } else if (state_ == STATE_OFFLINE_BLOCKED) {
         // Any key returns to PIN entry to retry or edit
         state_ = STATE_ENTER_PIN;
@@ -147,7 +154,12 @@ void AuthTerminal::handle_auth_response(const AuthResponse& resp) {
 void AuthTerminal::tick(uint32_t delta_ms) {
     timer_ms_ += delta_ms;
 
-    if (state_ == STATE_AUTH_SUCCESS) {
+    if (state_ == STATE_AUTHENTICATING) {
+        if (timer_ms_ >= AUTHENTICATING_TIMEOUT_MS) {
+            state_ = STATE_OFFLINE_BLOCKED;
+            timer_ms_ = 0;
+        }
+    } else if (state_ == STATE_AUTH_SUCCESS) {
         if (timer_ms_ >= SUCCESS_DISPLAY_MS) {
             reset();
         }

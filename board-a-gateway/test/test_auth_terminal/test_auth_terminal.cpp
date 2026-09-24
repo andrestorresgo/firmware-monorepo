@@ -248,6 +248,41 @@ void test_auth_response_user_not_found(void) {
     TEST_ASSERT_EQUAL(STATE_ENTER_USER_ID, terminal.get_state());
 }
 
+void test_authenticating_timeout_transitions_to_offline_blocked(void) {
+    AuthTerminal terminal;
+    terminal.handle_key('1');
+    terminal.handle_key('#');
+    terminal.handle_key('9');
+    terminal.handle_key('#');
+    TEST_ASSERT_EQUAL(STATE_AUTHENTICATING, terminal.get_state());
+
+    // Advance 7999ms - still authenticating
+    terminal.tick(7999);
+    TEST_ASSERT_EQUAL(STATE_AUTHENTICATING, terminal.get_state());
+
+    // Advance past 8000ms threshold -> transitions to STATE_OFFLINE_BLOCKED
+    terminal.tick(1);
+    TEST_ASSERT_EQUAL(STATE_OFFLINE_BLOCKED, terminal.get_state());
+
+    // Any key returns to pin entry
+    terminal.handle_key('*');
+    TEST_ASSERT_EQUAL(STATE_ENTER_PIN, terminal.get_state());
+}
+
+void test_authenticating_cancel_with_star_returns_to_pin_entry(void) {
+    AuthTerminal terminal;
+    terminal.handle_key('1');
+    terminal.handle_key('#');
+    terminal.handle_key('9');
+    terminal.handle_key('#');
+    TEST_ASSERT_EQUAL(STATE_AUTHENTICATING, terminal.get_state());
+
+    // Press '*' while authenticating cancels back to pin entry
+    bool submitted = terminal.handle_key('*');
+    TEST_ASSERT_FALSE(submitted);
+    TEST_ASSERT_EQUAL(STATE_ENTER_PIN, terminal.get_state());
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_phase1_numeric_entry_and_backspace);
@@ -259,6 +294,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_auth_response_invalid_pin_and_attempts);
     RUN_TEST(test_auth_response_user_locked_countdown);
     RUN_TEST(test_auth_response_user_not_found);
+    RUN_TEST(test_authenticating_timeout_transitions_to_offline_blocked);
+    RUN_TEST(test_authenticating_cancel_with_star_returns_to_pin_entry);
     return UNITY_END();
 }
 

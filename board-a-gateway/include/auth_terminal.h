@@ -41,6 +41,7 @@ public:
     static const size_t MAX_PIN_LEN = 8;
     static const uint32_t SUCCESS_DISPLAY_MS = 3000;
     static const uint32_t MESSAGE_DISPLAY_MS = 3000;
+    static const uint32_t AUTHENTICATING_TIMEOUT_MS = 8000;
 
     AuthTerminal();
 
