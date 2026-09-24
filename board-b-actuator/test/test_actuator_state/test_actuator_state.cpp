@@ -119,6 +119,45 @@ void test_telemetry_packet_generation(void) {
     TEST_ASSERT_TRUE(validate_frame(raw, (size_t)packed_len));
 }
 
+void test_motor_speed_states_and_pause_recovery(void) {
+    ActuatorState state;
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state.get_motor_state());
+
+    // Switch to MEDIUM
+    TEST_ASSERT_TRUE(state.set_motor_state(MOTOR_MEDIUM));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state.get_motor_state());
+    TEST_ASSERT_TRUE(state.is_dirty());
+    state.clear_dirty();
+
+    // Redundant setting does not mark dirty
+    TEST_ASSERT_TRUE(state.set_motor_state(MOTOR_MEDIUM));
+    TEST_ASSERT_FALSE(state.is_dirty());
+
+    // Switch to OFF
+    TEST_ASSERT_TRUE(state.set_motor_state(MOTOR_OFF));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state.get_motor_state());
+    TEST_ASSERT_TRUE(state.is_dirty());
+    state.clear_dirty();
+
+    // Invalid state returns false
+    TEST_ASSERT_FALSE(state.set_motor_state(99));
+
+    // Restore to MEDIUM
+    TEST_ASSERT_TRUE(state.set_motor_state(MOTOR_MEDIUM));
+
+    // Pause engaging forces motor to OFF (lockout)
+    state.set_paused(true);
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state.get_motor_state());
+
+    // While paused, changing motor speed state is rejected
+    TEST_ASSERT_FALSE(state.set_motor_state(MOTOR_ON));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state.get_motor_state());
+
+    // Resuming restores pre-pause state (MOTOR_MEDIUM)
+    state.set_paused(false);
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state.get_motor_state());
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -126,6 +165,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_initial_state_defaults);
     RUN_TEST(test_pause_lockout_and_resume);
     RUN_TEST(test_normal_state_mutations_and_dirty_flag);
+    RUN_TEST(test_motor_speed_states_and_pause_recovery);
     RUN_TEST(test_telemetry_payload_generation);
     RUN_TEST(test_telemetry_packet_generation);
     return UNITY_END();

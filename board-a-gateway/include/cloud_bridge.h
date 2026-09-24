@@ -60,6 +60,7 @@ private:
     void setup_esp_now();
     void forward_shape_detection(const struct ShapeDetectionPayload* det);
     void forward_servo_command(uint8_t servo_state);
+    void forward_motor_command(uint8_t motor_state);
 
     static void mqtt_callback(char* topic, uint8_t* payload, unsigned int length);
     static void espnow_recv_callback(const uint8_t *mac_addr, const uint8_t *data, int data_len);

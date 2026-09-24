@@ -29,10 +29,16 @@ public:
     // Returns true if a state transition occurred.
     bool handle_servo_command(uint8_t servo_state);
 
+    // Handles incoming DC motor speed command (MOTOR_OFF=0, MOTOR_ON=1, MOTOR_MEDIUM=2).
+    // If Machine Pause is active, command is suppressed and rejected (ADR-0004).
+    // Returns true if a state transition occurred.
+    bool handle_motor_command(uint8_t speed_state);
+
     // Direct accessors
     bool is_paused() const;
     bool is_motor_running() const;
     uint8_t get_motor_duty() const;
+    uint8_t get_motor_state() const;
     uint8_t get_servo_state() const;
     int get_servo_angle() const;
 

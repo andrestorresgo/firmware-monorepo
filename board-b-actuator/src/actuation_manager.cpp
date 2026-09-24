@@ -37,8 +37,15 @@ bool ActuationManager::handle_pause_button(uint32_t now_ms, bool raw_pressed) {
         // Enforce total hardware lockout per ADR-0004: immediately cut DC motor PWM to 0%
         motor_.stop();
     } else {
-        // Exiting Machine Pause restores DC motor power at 80% duty cycle
-        motor_.drive_forward(80);
+        // Exiting Machine Pause restores DC motor power according to configured speed state
+        uint8_t restored = state_.get_motor_state();
+        if (restored == MOTOR_MEDIUM) {
+            motor_.drive_forward(50);
+        } else if (restored == MOTOR_ON) {
+            motor_.drive_forward(80);
+        } else {
+            motor_.stop();
+        }
     }
 
     return true;
@@ -65,6 +72,36 @@ bool ActuationManager::handle_servo_command(uint8_t servo_state) {
     return state_changed;
 }
 
+bool ActuationManager::handle_motor_command(uint8_t speed_state) {
+    // 1. Lockout check: Reject and suppress remote motor commands during Machine Pause (ADR-0004)
+    if (state_.is_paused()) {
+        return false;
+    }
+
+    // 2. Validate speed state
+    if (speed_state > MOTOR_MEDIUM) {
+        return false;
+    }
+
+    // 3. Reject redundant command (no transition)
+    if (state_.get_motor_state() == speed_state) {
+        return false;
+    }
+
+    // 4. Actuate DC motor PWM
+    if (speed_state == MOTOR_MEDIUM) {
+        motor_.drive_forward(50);
+    } else if (speed_state == MOTOR_ON) {
+        motor_.drive_forward(80);
+    } else {
+        motor_.stop();
+    }
+
+    // 5. Update state
+    state_.set_motor_state(speed_state);
+    return true;
+}
+
 bool ActuationManager::is_paused() const {
     return state_.is_paused();
 }
@@ -75,6 +112,10 @@ bool ActuationManager::is_motor_running() const {
 
 uint8_t ActuationManager::get_motor_duty() const {
     return motor_.get_duty_percent();
+}
+
+uint8_t ActuationManager::get_motor_state() const {
+    return state_.get_motor_state();
 }
 
 uint8_t ActuationManager::get_servo_state() const {

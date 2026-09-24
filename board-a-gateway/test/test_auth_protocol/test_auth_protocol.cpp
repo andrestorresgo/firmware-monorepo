@@ -357,6 +357,90 @@ void test_build_servo_command_packet(void) {
     TEST_ASSERT_EQUAL(-1, build_servo_command_packet(SERVO_OPEN, buffer, 4)); // too small
 }
 
+void test_parse_motor_command_payload(void) {
+    uint8_t state = 99;
+
+    // String JSON formats
+    const char* json_on = "{\"state\":\"ON\"}";
+    TEST_ASSERT_TRUE(parse_motor_command_payload(json_on, strlen(json_on), &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state);
+
+    const char* json_off = "{\"state\":\"OFF\"}";
+    TEST_ASSERT_TRUE(parse_motor_command_payload(json_off, strlen(json_off), &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state);
+
+    const char* json_med = "{\"state\":\"MEDIUM\"}";
+    TEST_ASSERT_TRUE(parse_motor_command_payload(json_med, strlen(json_med), &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state);
+
+    // Numeric formats
+    const char* json_num1 = "{\"motor_state\":1}";
+    TEST_ASSERT_TRUE(parse_motor_command_payload(json_num1, strlen(json_num1), &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state);
+
+    const char* json_num2 = "{\"motor_state\":2}";
+    TEST_ASSERT_TRUE(parse_motor_command_payload(json_num2, strlen(json_num2), &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state);
+
+    const char* json_num0 = "{\"motor_state\":0}";
+    TEST_ASSERT_TRUE(parse_motor_command_payload(json_num0, strlen(json_num0), &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state);
+
+    // Plaintext
+    TEST_ASSERT_TRUE(parse_motor_command_payload("ON", 2, &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state);
+
+    TEST_ASSERT_TRUE(parse_motor_command_payload("MEDIUM", 6, &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state);
+
+    TEST_ASSERT_TRUE(parse_motor_command_payload("OFF", 3, &state));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state);
+
+    // Negative / invalid cases
+    TEST_ASSERT_FALSE(parse_motor_command_payload(NULL, 10, &state));
+    TEST_ASSERT_FALSE(parse_motor_command_payload("ON", 0, &state));
+    TEST_ASSERT_FALSE(parse_motor_command_payload("ON", 2, NULL));
+    TEST_ASSERT_FALSE(parse_motor_command_payload("UNKNOWN", 7, &state));
+    TEST_ASSERT_FALSE(parse_motor_command_payload("{\"state\":\"INVALID\"}", 19, &state));
+    TEST_ASSERT_FALSE(parse_motor_command_payload("{malformed json", 15, &state));
+}
+
+void test_build_motor_command_packet(void) {
+    uint8_t buffer[64];
+
+    // Build MOTOR_ON packet
+    int len_on = build_motor_command_packet(MOTOR_ON, buffer, sizeof(buffer));
+    TEST_ASSERT_GREATER_THAN(0, len_on);
+    TEST_ASSERT_EQUAL(sizeof(struct FrameHeader) + sizeof(struct MotorCommandPayload), len_on);
+
+    struct EspNowPacket pkt_on;
+    TEST_ASSERT_TRUE(unpack_packet(buffer, len_on, &pkt_on));
+    TEST_ASSERT_EQUAL_UINT8(ESPNOW_MAGIC_BYTE, pkt_on.header.magic);
+    TEST_ASSERT_EQUAL_UINT8(OPCODE_MOTOR_COMMAND, pkt_on.header.opcode);
+    TEST_ASSERT_EQUAL_UINT8(sizeof(struct MotorCommandPayload), pkt_on.header.payload_len);
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, pkt_on.payload.motor_command.motor_state);
+
+    // Build MOTOR_MEDIUM packet
+    int len_med = build_motor_command_packet(MOTOR_MEDIUM, buffer, sizeof(buffer));
+    TEST_ASSERT_GREATER_THAN(0, len_med);
+    struct EspNowPacket pkt_med;
+    TEST_ASSERT_TRUE(unpack_packet(buffer, len_med, &pkt_med));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, pkt_med.payload.motor_command.motor_state);
+
+    // Build MOTOR_OFF packet
+    int len_off = build_motor_command_packet(MOTOR_OFF, buffer, sizeof(buffer));
+    TEST_ASSERT_GREATER_THAN(0, len_off);
+    struct EspNowPacket pkt_off;
+    TEST_ASSERT_TRUE(unpack_packet(buffer, len_off, &pkt_off));
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, pkt_off.payload.motor_command.motor_state);
+
+    // Validation failures
+    TEST_ASSERT_EQUAL(-1, build_motor_command_packet(3, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(-1, build_motor_command_packet(255, buffer, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(-1, build_motor_command_packet(MOTOR_ON, NULL, sizeof(buffer)));
+    TEST_ASSERT_EQUAL(-1, build_motor_command_packet(MOTOR_ON, buffer, 4)); // too small
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -378,6 +462,8 @@ int main(int argc, char** argv) {
     RUN_TEST(test_format_rollover_json);
     RUN_TEST(test_parse_servo_command_payload);
     RUN_TEST(test_build_servo_command_packet);
+    RUN_TEST(test_parse_motor_command_payload);
+    RUN_TEST(test_build_motor_command_packet);
     return UNITY_END();
 }
 

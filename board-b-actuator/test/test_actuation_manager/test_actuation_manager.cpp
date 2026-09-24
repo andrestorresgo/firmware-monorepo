@@ -302,6 +302,72 @@ void test_telemetry_packet_generation_on_actuation_transitions(void) {
     TEST_ASSERT_EQUAL_UINT8(SERVO_OPEN, pkt.payload.telemetry.servo_state);
 }
 
+void test_actuation_manager_motor_command(void) {
+    ActuatorState state;
+    MockHBridgeMotor motor;
+    MockServoGateDriver servo;
+    DebouncedButton button(50);
+    ActuationManager manager(state, motor, servo, button);
+
+    manager.begin();
+    TEST_ASSERT_EQUAL_UINT8(80, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state.get_motor_state());
+
+    // Command to MEDIUM (50% duty cycle)
+    bool res = manager.handle_motor_command(MOTOR_MEDIUM);
+    TEST_ASSERT_TRUE(res);
+    TEST_ASSERT_EQUAL_UINT8(50, manager.get_motor_duty());
+    TEST_ASSERT_TRUE(manager.is_motor_running());
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state.get_motor_state());
+
+    // Redundant command rejected
+    res = manager.handle_motor_command(MOTOR_MEDIUM);
+    TEST_ASSERT_FALSE(res);
+
+    // Command to OFF (0% duty cycle)
+    res = manager.handle_motor_command(MOTOR_OFF);
+    TEST_ASSERT_TRUE(res);
+    TEST_ASSERT_EQUAL_UINT8(0, manager.get_motor_duty());
+    TEST_ASSERT_FALSE(manager.is_motor_running());
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state.get_motor_state());
+
+    // Command to ON (80% duty cycle)
+    res = manager.handle_motor_command(MOTOR_ON);
+    TEST_ASSERT_TRUE(res);
+    TEST_ASSERT_EQUAL_UINT8(80, manager.get_motor_duty());
+    TEST_ASSERT_TRUE(manager.is_motor_running());
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state.get_motor_state());
+
+    // Invalid command rejected
+    TEST_ASSERT_FALSE(manager.handle_motor_command(99));
+
+    // Switch to MEDIUM, then Pause
+    manager.handle_motor_command(MOTOR_MEDIUM);
+    TEST_ASSERT_EQUAL_UINT8(50, manager.get_motor_duty());
+
+    // Pause toggle
+    manager.handle_pause_button(0, true);
+    manager.handle_pause_button(60, true);
+    TEST_ASSERT_TRUE(manager.is_paused());
+    TEST_ASSERT_EQUAL_UINT8(0, manager.get_motor_duty());
+
+    // While paused, remote motor command rejected
+    TEST_ASSERT_FALSE(manager.handle_motor_command(MOTOR_ON));
+    TEST_ASSERT_EQUAL_UINT8(0, manager.get_motor_duty());
+
+    // Release button
+    manager.handle_pause_button(100, false);
+    manager.handle_pause_button(160, false);
+
+    // Resume from pause restores MEDIUM (50% duty cycle)
+    manager.handle_pause_button(200, true);
+    bool toggled_resume = manager.handle_pause_button(260, true);
+    TEST_ASSERT_TRUE(toggled_resume);
+    TEST_ASSERT_FALSE(manager.is_paused());
+    TEST_ASSERT_EQUAL_UINT8(50, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state.get_motor_state());
+}
+
 int main(int argc, char** argv) {
     (void)argc;
     (void)argv;
@@ -310,6 +376,7 @@ int main(int argc, char** argv) {
     RUN_TEST(test_servo_gate_driver_mock);
     RUN_TEST(test_debounced_button_timing_and_noise);
     RUN_TEST(test_actuation_manager_normal_operation);
+    RUN_TEST(test_actuation_manager_motor_command);
     RUN_TEST(test_machine_pause_hardware_lockout);
     RUN_TEST(test_pause_preserves_led_binary_counts);
     RUN_TEST(test_telemetry_packet_generation_on_actuation_transitions);

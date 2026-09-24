@@ -37,6 +37,7 @@ static QueueHandle_t s_rx_queue = NULL;
 static QueueHandle_t s_event_telemetry_queue = NULL;
 static QueueHandle_t s_detection_queue = NULL;
 static QueueHandle_t s_servo_queue = NULL;
+static QueueHandle_t s_motor_queue = NULL;
 static QueueHandle_t s_tx_rollover_queue = NULL;
 
 // ESP-NOW Callbacks
@@ -206,6 +207,15 @@ void networkTask(void* pvParameters) {
                         Serial.println(F("[Actuator] WARN: Servo queue full, dropping command"));
                     }
                 }
+            } else if (rx_pkt.header.opcode == OPCODE_MOTOR_COMMAND) {
+                s_link_manager.record_activity(now);
+                Serial.printf("[Actuator] Received MOTOR_COMMAND from Gateway: state=%u\n",
+                              rx_pkt.payload.motor_command.motor_state);
+                if (s_motor_queue) {
+                    if (xQueueSend(s_motor_queue, &rx_pkt.payload.motor_command, 0) != pdTRUE) {
+                        Serial.println(F("[Actuator] WARN: Motor queue full, dropping command"));
+                    }
+                }
             } else {
                 s_link_manager.record_activity(now);
             }
@@ -317,6 +327,16 @@ void actuatorTask(void* pvParameters) {
                           s_actuation_manager.is_paused());
         }
 
+        // 3. Process incoming motor commands from Core 0
+        MotorCommandPayload motor_cmd = {};
+        while (s_motor_queue && xQueueReceive(s_motor_queue, &motor_cmd, 0) == pdTRUE) {
+            bool state_changed = s_actuation_manager.handle_motor_command(motor_cmd.motor_state);
+            Serial.printf("[Actuator] Handled motor command (%u): changed=%d, duty=%u, is_paused=%d\n",
+                          motor_cmd.motor_state, state_changed,
+                          s_actuation_manager.get_motor_duty(),
+                          s_actuation_manager.is_paused());
+        }
+
         // 3. Process incoming shape detection commands from Core 0
         ShapeDetectionPayload det = {};
         while (s_detection_queue && xQueueReceive(s_detection_queue, &det, 0) == pdTRUE) {
@@ -367,9 +387,10 @@ void setup() {
     s_event_telemetry_queue = xQueueCreate(4, sizeof(uint32_t));
     s_detection_queue = xQueueCreate(8, sizeof(ShapeDetectionPayload));
     s_servo_queue = xQueueCreate(4, sizeof(ServoCommandPayload));
+    s_motor_queue = xQueueCreate(4, sizeof(MotorCommandPayload));
     s_tx_rollover_queue = xQueueCreate(4, sizeof(BatchRolloverPayload));
 
-    if (!s_rx_queue || !s_event_telemetry_queue || !s_detection_queue || !s_servo_queue || !s_tx_rollover_queue) {
+    if (!s_rx_queue || !s_event_telemetry_queue || !s_detection_queue || !s_servo_queue || !s_motor_queue || !s_tx_rollover_queue) {
         Serial.println(F("[FATAL] Failed to create FreeRTOS queues!"));
         while (1) { delay(1000); }
     }

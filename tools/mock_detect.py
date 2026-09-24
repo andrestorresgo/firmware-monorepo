@@ -118,6 +118,10 @@ class MockDetectionClient:
         payload = {"state": state.upper()}
         return self._http_request("POST", "/api/v1/actuator/servo", payload=payload)
 
+    def command_motor(self, state: str) -> Tuple[int, Dict[str, Any]]:
+        payload = {"state": state.upper()}
+        return self._http_request("POST", "/api/v1/actuator/motor", payload=payload)
+
 
 def print_banner(client: MockDetectionClient):
     print(f"{CYAN}{BOLD}{'═' * 70}{RESET}")
@@ -149,13 +153,21 @@ def show_state(client: MockDetectionClient):
     mqtt_conn = data.get("mqtt_connected", False)
 
     paused = sys_state.get("is_paused", False)
-    motor = sys_state.get("motor_state", False)
+    motor = sys_state.get("motor_state", "OFF")
     servo = sys_state.get("servo_state", False)
     last_telem = sys_state.get("last_telemetry_at") or "None (waiting for Board A heartbeat)"
 
+    motor_str = str(motor).upper()
+    if motor_str in ("ON", "TRUE", "1"):
+        motor_display = f"{GREEN}ACTIVE / ON (80% PWM){RESET}"
+    elif motor_str in ("MEDIUM", "2"):
+        motor_display = f"{YELLOW}ACTIVE / MEDIUM (50% PWM){RESET}"
+    else:
+        motor_display = f"{DIM}HALTED / OFF (0% PWM){RESET}"
+
     print(f"\n{BOLD}📊 CURRENT SYSTEM STATE:{RESET}")
     print(f"  • Machine Paused:    {RED if paused else GREEN}{'YES (LOCKED)' if paused else 'NO (RUNNING)'}{RESET}")
-    print(f"  • DC Motor Conveyor: {GREEN if motor else YELLOW}{'ACTIVE (80% PWM)' if motor else 'IDLE / STOPPED'}{RESET}")
+    print(f"  • DC Motor Conveyor: {motor_display}")
     print(f"  • Servo Sorting Gate:{CYAN}{'OPEN' if servo else 'CLOSED'}{RESET}")
     print(f"  • MQTT Broker State: {GREEN if mqtt_conn else RED}{'CONNECTED' if mqtt_conn else 'DISCONNECTED'}{RESET}")
     print(f"  • Last Telemetry:    {DIM}{last_telem}{RESET}")
@@ -279,6 +291,25 @@ def toggle_servo(client: MockDetectionClient, state: str):
         print(f"  {RED}❌ FAILED (HTTP {status}):{RESET} {resp.get('error', resp)}")
 
 
+def control_motor(client: MockDetectionClient, state: str):
+    clean = state.strip().upper()
+    if clean in ("0", "OFF", "STOP", "HALT", "FALSE"):
+        target = "OFF"
+    elif clean in ("2", "MED", "MEDIUM", "HALF", "MID"):
+        target = "MEDIUM"
+    elif clean in ("1", "ON", "START", "RUN", "TRUE"):
+        target = "ON"
+    else:
+        target = clean
+
+    print(f"⚙️ Sending MOTOR speed command: {CYAN}{BOLD}{target}{RESET}...")
+    status, resp = client.command_motor(target)
+    if status == 200:
+        print(f"  {GREEN}✅ DISPATCHED!{RESET} HiveMQ 'factory/actuator/motor' ➔ Board A ➔ ESP-NOW ➔ Board B motor = {target}")
+    else:
+        print(f"  {RED}❌ FAILED (HTTP {status}):{RESET} {resp.get('error', resp)}")
+
+
 def interactive_menu(client: MockDetectionClient):
     while True:
         print_banner(client)
@@ -290,6 +321,7 @@ def interactive_menu(client: MockDetectionClient):
         print()
         print("  Advanced actuation & testing:")
         print(f"    {BOLD}[b]{RESET} 📦 Batch Sequence (5x detections ➔ Rollover + 800ms Observation Delay)")
+        print(f"    {BOLD}[m]{RESET} ⚙️ Set Motor Speed (OFF / MEDIUM / ON)")
         print(f"    {BOLD}[o]{RESET} 🚪 Open Servo Gate")
         print(f"    {BOLD}[c]{RESET} 🚪 Close Servo Gate")
         print(f"    {BOLD}[s]{RESET} 📊 View Live System State & Shape Counters")
@@ -323,6 +355,9 @@ def interactive_menu(client: MockDetectionClient):
             except ValueError:
                 count = 5
             run_batch_sequence(client, s_choice, count=count)
+        elif choice == "m":
+            m_choice = input(f"Motor speed [off/medium/on, default=medium]: ").strip().lower() or "medium"
+            control_motor(client, m_choice)
         elif choice == "o":
             toggle_servo(client, "OPEN")
         elif choice == "c":
@@ -355,13 +390,16 @@ Examples:
   ./mock-detect random              # Trigger 1 random shape detection
   ./mock-detect batch circle 5      # Trigger 5 circles with 2.2s delay (triggers rollover)
   ./mock-detect status              # View current system state and counters
+  ./mock-detect motor on            # Send ON (80%) speed command to DC motor
+  ./mock-detect motor medium        # Send MEDIUM (50%) speed command to DC motor
+  ./mock-detect motor off           # Send OFF (0%) speed command to DC motor
   ./mock-detect servo open          # Send OPEN command to sorting gate
   ./mock-detect servo close         # Send CLOSED command to sorting gate
   ./mock-detect loop --interval 2.5 # Auto-emit detections every 2.5s
         """
     )
-    parser.add_argument("command", nargs="?", help="Command or shape: circle, triangle, square, batch, servo, status, loop, random")
-    parser.add_argument("args", nargs="*", help="Arguments for the command (e.g. 'batch circle 5' or 'servo open')")
+    parser.add_argument("command", nargs="?", help="Command or shape: circle, triangle, square, batch, motor, servo, status, loop, random")
+    parser.add_argument("args", nargs="*", help="Arguments for the command (e.g. 'batch circle 5', 'motor medium', or 'servo open')")
     parser.add_argument("--url", "-u", default=DEFAULT_URL, help=f"API Base URL (default: {DEFAULT_URL})")
     parser.add_argument("--token", "-t", default=DEFAULT_TOKEN, help="Bearer token for vision webhook")
     parser.add_argument("--endpoint", "-e", default=DEFAULT_ENDPOINT, help=f"Webhook endpoint (default: {DEFAULT_ENDPOINT})")
@@ -398,6 +436,11 @@ Examples:
         shape_arg = parsed.args[0] if len(parsed.args) > 0 else "circle"
         count_arg = int(parsed.args[1]) if len(parsed.args) > 1 and parsed.args[1].isdigit() else 5
         run_batch_sequence(client, shape_arg, count=count_arg, delay=parsed.delay)
+        return
+
+    if cmd == "motor":
+        target = parsed.args[0] if len(parsed.args) > 0 else "MEDIUM"
+        control_motor(client, target)
         return
 
     if cmd == "servo":

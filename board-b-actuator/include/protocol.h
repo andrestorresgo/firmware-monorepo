@@ -20,7 +20,8 @@ enum MessageOpcode {
     OPCODE_SHAPE_DETECTION = 0x03, // Gateway commands shape counter increment
     OPCODE_SERVO_COMMAND   = 0x04, // Gateway commands sorting gate position
     OPCODE_TELEMETRY       = 0x05, // Actuator transmits status heartbeat
-    OPCODE_BATCH_ROLLOVER  = 0x06  // Actuator notifies batch rollover completion
+    OPCODE_BATCH_ROLLOVER  = 0x06, // Actuator notifies batch rollover completion
+    OPCODE_MOTOR_COMMAND   = 0x07  // Gateway commands DC motor speed state
 };
 
 // Shape Identifiers (Circle=Red, Triangle=Green, Square=Blue)
@@ -35,6 +36,13 @@ enum ShapeId {
 enum ServoPosition {
     SERVO_CLOSED = 0, // Gate closed (0 degrees)
     SERVO_OPEN   = 1  // Gate open (90 degrees)
+};
+
+// Motor Speed States
+enum MotorSpeedState {
+    MOTOR_OFF    = 0, // Motor stopped (0% duty cycle)
+    MOTOR_ON     = 1, // Motor high/full forward (80% duty cycle)
+    MOTOR_MEDIUM = 2  // Motor medium speed (50% duty cycle)
 };
 
 #pragma pack(push, 1)
@@ -71,10 +79,15 @@ struct ServoCommandPayload {
     uint8_t servo_state;     // 0 = SERVO_CLOSED, 1 = SERVO_OPEN
 };
 
+// Payload for OPCODE_MOTOR_COMMAND (1 byte)
+struct MotorCommandPayload {
+    uint8_t motor_state;     // 0 = MOTOR_OFF, 1 = MOTOR_ON, 2 = MOTOR_MEDIUM
+};
+
 // Payload for OPCODE_TELEMETRY (10 bytes)
 struct TelemetryPayload {
     uint8_t is_paused;       // 1 = Machine paused, 0 = Active
-    uint8_t motor_state;     // 1 = Motor running, 0 = Motor off
+    uint8_t motor_state;     // 0 = MOTOR_OFF, 1 = MOTOR_ON, 2 = MOTOR_MEDIUM
     uint8_t servo_state;     // 0 = SERVO_CLOSED, 1 = SERVO_OPEN
     uint8_t red_count;       // Current count for Red/Circle (0-5)
     uint8_t green_count;     // Current count for Green/Triangle (0-5)
@@ -97,6 +110,7 @@ struct EspNowPacket {
         BeaconAckPayload beacon_ack;
         ShapeDetectionPayload shape_detection;
         ServoCommandPayload servo_command;
+        MotorCommandPayload motor_command;
         TelemetryPayload telemetry;
         BatchRolloverPayload batch_rollover;
         uint8_t raw[MAX_PAYLOAD_SIZE];
@@ -147,6 +161,9 @@ static inline bool validate_frame(const uint8_t* buffer, size_t len) {
             break;
         case OPCODE_SERVO_COMMAND:
             if (hdr->payload_len != sizeof(struct ServoCommandPayload)) return false;
+            break;
+        case OPCODE_MOTOR_COMMAND:
+            if (hdr->payload_len != sizeof(struct MotorCommandPayload)) return false;
             break;
         case OPCODE_TELEMETRY:
             if (hdr->payload_len != sizeof(struct TelemetryPayload)) return false;

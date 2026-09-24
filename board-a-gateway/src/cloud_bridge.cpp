@@ -198,6 +198,13 @@ void CloudBridge::check_mqtt() {
                     Serial.println(F("[CloudBridge] ERR: Failed to subscribe to 'factory/actuator/servo'"));
                 }
 
+                // Subscribe to motor actuator topic
+                if (mqtt_client_.subscribe("factory/actuator/motor")) {
+                    Serial.println(F("[CloudBridge] Subscribed to 'factory/actuator/motor'"));
+                } else {
+                    Serial.println(F("[CloudBridge] ERR: Failed to subscribe to 'factory/actuator/motor'"));
+                }
+
                 publish_network_status(true);
             } else {
                 Serial.printf("[CloudBridge] MQTT connect failed, state=%d. Retrying in 3s...\n",
@@ -402,6 +409,15 @@ void CloudBridge::mqtt_callback(char* topic, uint8_t* payload, unsigned int leng
         } else {
             Serial.println(F("[CloudBridge] ERR: Failed to parse servo command payload!"));
         }
+    } else if (strcmp(topic, "factory/actuator/motor") == 0) {
+        uint8_t motor_state = 0;
+        if (parse_motor_command_payload((const char*)payload, (size_t)length, &motor_state)) {
+            const char* name = (motor_state == MOTOR_MEDIUM) ? "MEDIUM" : ((motor_state == MOTOR_ON) ? "ON" : "OFF");
+            Serial.printf("[CloudBridge] Parsed Motor Command: state=%u (%s)\n", motor_state, name);
+            s_instance->forward_motor_command(motor_state);
+        } else {
+            Serial.println(F("[CloudBridge] ERR: Failed to parse motor command payload!"));
+        }
     }
 }
 
@@ -445,6 +461,27 @@ void CloudBridge::forward_servo_command(uint8_t servo_state) {
         Serial.printf("[CloudBridge] Forwarded Servo Command (state=%u) via ESP-NOW\n", servo_state);
     } else {
         Serial.printf("[CloudBridge] ERR: esp_now_send servo command failed, err=%d\n", res);
+    }
+}
+
+void CloudBridge::forward_motor_command(uint8_t motor_state) {
+    if (!esp_now_initialized_) return;
+
+    uint8_t buffer[64];
+    int len = build_motor_command_packet(motor_state, buffer, sizeof(buffer));
+    if (len <= 0) return;
+
+    const uint8_t* target_mac = actuator_paired_ ? actuator_mac_ : nullptr;
+    uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    if (!target_mac) {
+        target_mac = bcast;
+    }
+
+    esp_err_t res = esp_now_send(target_mac, buffer, (size_t)len);
+    if (res == ESP_OK) {
+        Serial.printf("[CloudBridge] Forwarded Motor Command (state=%u) via ESP-NOW\n", motor_state);
+    } else {
+        Serial.printf("[CloudBridge] ERR: esp_now_send motor command failed, err=%d\n", res);
     }
 }
 

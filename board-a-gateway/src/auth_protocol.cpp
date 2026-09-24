@@ -282,5 +282,113 @@ int build_servo_command_packet(uint8_t servo_state, uint8_t* out_buf, size_t max
     return pack_packet(&pkt, out_buf, max_len);
 }
 
+bool parse_motor_command_payload(const char* payload, size_t len, uint8_t* out_motor_state) {
+    if (!payload || len == 0 || !out_motor_state) {
+        return false;
+    }
+
+    // Trim leading whitespace and quotes
+    while (len > 0 && (*payload == ' ' || *payload == '\t' || *payload == '\r' || *payload == '\n' || *payload == '\"')) {
+        payload++;
+        len--;
+    }
+    // Trim trailing whitespace and quotes
+    while (len > 0 && (payload[len - 1] == ' ' || payload[len - 1] == '\t' || payload[len - 1] == '\r' || payload[len - 1] == '\n' || payload[len - 1] == '\"')) {
+        len--;
+    }
+    if (len == 0) {
+        return false;
+    }
+
+    // If starts with '{', attempt JSON parsing
+    if (*payload == '{') {
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, payload, len);
+        if (!err) {
+            // Check "state", "command", "speed"
+            const char* str_val = doc["state"] | doc["command"] | doc["speed"] | (const char*)nullptr;
+            if (str_val) {
+                if (strcasecmp(str_val, "ON") == 0 || strcmp(str_val, "1") == 0 || strcasecmp(str_val, "true") == 0) {
+                    *out_motor_state = MOTOR_ON;
+                    return true;
+                } else if (strcasecmp(str_val, "OFF") == 0 || strcmp(str_val, "0") == 0 || strcasecmp(str_val, "false") == 0) {
+                    *out_motor_state = MOTOR_OFF;
+                    return true;
+                } else if (strcasecmp(str_val, "MEDIUM") == 0 || strcasecmp(str_val, "MED") == 0 || strcmp(str_val, "2") == 0) {
+                    *out_motor_state = MOTOR_MEDIUM;
+                    return true;
+                }
+            }
+
+            // Check numeric "motor_state", "state", "speed"
+            if (doc["motor_state"].is<int>()) {
+                int val = doc["motor_state"].as<int>();
+                if (val >= MOTOR_OFF && val <= MOTOR_MEDIUM) {
+                    *out_motor_state = (uint8_t)val;
+                    return true;
+                }
+            }
+            if (doc["state"].is<int>()) {
+                int val = doc["state"].as<int>();
+                if (val >= MOTOR_OFF && val <= MOTOR_MEDIUM) {
+                    *out_motor_state = (uint8_t)val;
+                    return true;
+                }
+            }
+            if (doc["speed"].is<int>()) {
+                int val = doc["speed"].as<int>();
+                if (val >= MOTOR_OFF && val <= MOTOR_MEDIUM) {
+                    *out_motor_state = (uint8_t)val;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Fallback: check raw string payload (e.g. "ON", "OFF", "MEDIUM", "1", "0", "2")
+    if ((len == 2 && strncasecmp(payload, "ON", 2) == 0) ||
+        (len == 1 && *payload == '1') ||
+        (len == 4 && strncasecmp(payload, "true", 4) == 0)) {
+        *out_motor_state = MOTOR_ON;
+        return true;
+    } else if ((len == 3 && strncasecmp(payload, "OFF", 3) == 0) ||
+               (len == 1 && *payload == '0') ||
+               (len == 5 && strncasecmp(payload, "false", 5) == 0)) {
+        *out_motor_state = MOTOR_OFF;
+        return true;
+    } else if ((len == 6 && strncasecmp(payload, "MEDIUM", 6) == 0) ||
+               (len == 3 && strncasecmp(payload, "MED", 3) == 0) ||
+               (len == 1 && *payload == '2')) {
+        *out_motor_state = MOTOR_MEDIUM;
+        return true;
+    }
+
+    return false;
+}
+
+int build_motor_command_packet(uint8_t motor_state, uint8_t* out_buf, size_t max_len) {
+    if (motor_state > MOTOR_MEDIUM) {
+        return -1;
+    }
+    if (!out_buf) {
+        return -1;
+    }
+    size_t required_len = sizeof(struct FrameHeader) + sizeof(struct MotorCommandPayload);
+    if (max_len < required_len) {
+        return -1;
+    }
+
+    struct EspNowPacket pkt;
+    memset(&pkt, 0, sizeof(pkt));
+    pkt.header.magic = ESPNOW_MAGIC_BYTE;
+    pkt.header.opcode = OPCODE_MOTOR_COMMAND;
+    pkt.header.payload_len = sizeof(struct MotorCommandPayload);
+    pkt.payload.motor_command.motor_state = motor_state;
+
+    return pack_packet(&pkt, out_buf, max_len);
+}
+
+
 
 

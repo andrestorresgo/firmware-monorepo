@@ -159,12 +159,33 @@ void test_corrupted_checksum_rejected(void) {
     TEST_ASSERT_FALSE(unpack_packet(buffer, packed_len, &rx_packet));
 }
 
+void test_pack_and_unpack_motor_command(void) {
+    EspNowPacket tx_packet = {};
+    tx_packet.header.magic = ESPNOW_MAGIC_BYTE;
+    tx_packet.header.opcode = OPCODE_MOTOR_COMMAND;
+    tx_packet.header.payload_len = sizeof(MotorCommandPayload);
+    tx_packet.payload.motor_command.motor_state = MOTOR_MEDIUM;
+
+    uint8_t buffer[64];
+    int packed_len = pack_packet(&tx_packet, buffer, sizeof(buffer));
+    TEST_ASSERT_GREATER_THAN(0, packed_len);
+    TEST_ASSERT_EQUAL(sizeof(FrameHeader) + sizeof(MotorCommandPayload), packed_len);
+
+    TEST_ASSERT_TRUE(validate_frame(buffer, packed_len));
+
+    EspNowPacket rx_packet = {};
+    TEST_ASSERT_TRUE(unpack_packet(buffer, packed_len, &rx_packet));
+    TEST_ASSERT_EQUAL_HEX8(OPCODE_MOTOR_COMMAND, rx_packet.header.opcode);
+    TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, rx_packet.payload.motor_command.motor_state);
+}
+
 void test_struct_packing_invariants(void) {
     TEST_ASSERT_EQUAL(4, sizeof(FrameHeader));
     TEST_ASSERT_EQUAL(11, sizeof(BeaconPayload));
     TEST_ASSERT_EQUAL(7, sizeof(BeaconAckPayload));
     TEST_ASSERT_EQUAL(5, sizeof(ShapeDetectionPayload));
     TEST_ASSERT_EQUAL(1, sizeof(ServoCommandPayload));
+    TEST_ASSERT_EQUAL(1, sizeof(MotorCommandPayload));
     TEST_ASSERT_EQUAL(10, sizeof(TelemetryPayload));
     TEST_ASSERT_EQUAL(6, sizeof(BatchRolloverPayload));
 }
@@ -179,7 +200,9 @@ int main(int argc, char **argv) {
     RUN_TEST(test_pack_and_unpack_shape_detection);
     RUN_TEST(test_pack_and_unpack_telemetry);
     RUN_TEST(test_pack_and_unpack_batch_rollover);
+    RUN_TEST(test_pack_and_unpack_motor_command);
     RUN_TEST(test_corrupted_checksum_rejected);
     RUN_TEST(test_struct_packing_invariants);
     return UNITY_END();
 }
+

@@ -3,7 +3,8 @@
 
 ActuatorState::ActuatorState()
     : is_paused_(false),
-      motor_state_(true), // Running by default in normal operation (User Story 22)
+      motor_state_(MOTOR_ON), // Running by default in normal operation (User Story 22)
+      pre_pause_motor_state_(MOTOR_ON),
       servo_state_(SERVO_CLOSED),
       red_count_(0),
       green_count_(0),
@@ -14,7 +15,7 @@ bool ActuatorState::is_paused() const {
     return is_paused_;
 }
 
-bool ActuatorState::get_motor_state() const {
+uint8_t ActuatorState::get_motor_state() const {
     return motor_state_;
 }
 
@@ -47,21 +48,26 @@ void ActuatorState::set_paused(bool paused) {
         is_paused_ = paused;
         if (is_paused_) {
             // Cut power to DC conveyor motor upon pause (ADR-0004)
-            motor_state_ = false;
+            pre_pause_motor_state_ = motor_state_;
+            motor_state_ = MOTOR_OFF;
         } else {
             // Restore DC conveyor motor upon resume (User Story 26)
-            motor_state_ = true;
+            motor_state_ = (pre_pause_motor_state_ == MOTOR_OFF) ? MOTOR_ON : pre_pause_motor_state_;
         }
         dirty_ = true;
     }
 }
 
-bool ActuatorState::set_motor_state(bool running) {
+bool ActuatorState::set_motor_state(uint8_t speed_state) {
     if (is_paused_) {
         return false; // Hardware lockout
     }
-    if (motor_state_ != running) {
-        motor_state_ = running;
+    if (speed_state > MOTOR_MEDIUM) {
+        return false; // Valid states: MOTOR_OFF (0), MOTOR_ON (1), MOTOR_MEDIUM (2)
+    }
+    if (motor_state_ != speed_state) {
+        motor_state_ = speed_state;
+        pre_pause_motor_state_ = speed_state;
         dirty_ = true;
     }
     return true;

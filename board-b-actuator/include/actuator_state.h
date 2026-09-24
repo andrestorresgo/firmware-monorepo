@@ -9,7 +9,7 @@ public:
     ActuatorState();
 
     bool is_paused() const;
-    bool get_motor_state() const;
+    uint8_t get_motor_state() const;
     uint8_t get_servo_state() const;
     uint8_t get_red_count() const;
     uint8_t get_green_count() const;
@@ -22,7 +22,7 @@ public:
     void set_paused(bool paused);
 
     // Peripheral controls (rejected if machine is paused)
-    bool set_motor_state(bool running);
+    bool set_motor_state(uint8_t state);
     bool set_servo_state(uint8_t state);
     bool set_shape_count(uint8_t shape_id, uint8_t count);
 
@@ -32,7 +32,8 @@ public:
 
 private:
     bool is_paused_;
-    bool motor_state_;
+    uint8_t motor_state_;
+    uint8_t pre_pause_motor_state_;
     uint8_t servo_state_;
     uint8_t red_count_;
     uint8_t green_count_;
