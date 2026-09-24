@@ -108,9 +108,9 @@ void test_actuation_manager_normal_operation(void) {
     manager.begin();
     state.clear_dirty();
 
-    // Motor should be driven forward at 80% duty cycle
+    // Motor should be driven forward at 90% duty cycle
     TEST_ASSERT_TRUE(manager.is_motor_running());
-    TEST_ASSERT_EQUAL_UINT8(80, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(90, manager.get_motor_duty());
     TEST_ASSERT_TRUE(state.get_motor_state());
 
     // Servo should be Closed at 0 degrees
@@ -156,7 +156,7 @@ void test_machine_pause_hardware_lockout(void) {
 
     TEST_ASSERT_FALSE(manager.is_paused());
     TEST_ASSERT_TRUE(manager.is_motor_running());
-    TEST_ASSERT_EQUAL_UINT8(80, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(90, manager.get_motor_duty());
 
     // Step 1: Simulate physical push button press on GPIO 25
     manager.handle_pause_button(0, true);
@@ -203,9 +203,9 @@ void test_machine_pause_hardware_lockout(void) {
     TEST_ASSERT_FALSE(state.is_paused());
     TEST_ASSERT_TRUE(state.is_dirty());
 
-    // Restores DC motor power to 80% duty cycle
+    // Restores DC motor power to 90% duty cycle
     TEST_ASSERT_TRUE(manager.is_motor_running());
-    TEST_ASSERT_EQUAL_UINT8(80, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(90, manager.get_motor_duty());
     TEST_ASSERT_TRUE(state.get_motor_state());
 
     // Servo commands unlocked
@@ -310,13 +310,13 @@ void test_actuation_manager_motor_command(void) {
     ActuationManager manager(state, motor, servo, button);
 
     manager.begin();
-    TEST_ASSERT_EQUAL_UINT8(80, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(90, manager.get_motor_duty());
     TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state.get_motor_state());
 
-    // Command to MEDIUM (50% duty cycle)
+    // Command to MEDIUM (70% duty cycle)
     bool res = manager.handle_motor_command(MOTOR_MEDIUM);
     TEST_ASSERT_TRUE(res);
-    TEST_ASSERT_EQUAL_UINT8(50, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(70, manager.get_motor_duty());
     TEST_ASSERT_TRUE(manager.is_motor_running());
     TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state.get_motor_state());
 
@@ -331,10 +331,10 @@ void test_actuation_manager_motor_command(void) {
     TEST_ASSERT_FALSE(manager.is_motor_running());
     TEST_ASSERT_EQUAL_UINT8(MOTOR_OFF, state.get_motor_state());
 
-    // Command to ON (80% duty cycle)
+    // Command to ON (90% duty cycle)
     res = manager.handle_motor_command(MOTOR_ON);
     TEST_ASSERT_TRUE(res);
-    TEST_ASSERT_EQUAL_UINT8(80, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(90, manager.get_motor_duty());
     TEST_ASSERT_TRUE(manager.is_motor_running());
     TEST_ASSERT_EQUAL_UINT8(MOTOR_ON, state.get_motor_state());
 
@@ -343,7 +343,7 @@ void test_actuation_manager_motor_command(void) {
 
     // Switch to MEDIUM, then Pause
     manager.handle_motor_command(MOTOR_MEDIUM);
-    TEST_ASSERT_EQUAL_UINT8(50, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(70, manager.get_motor_duty());
 
     // Pause toggle
     manager.handle_pause_button(0, true);
@@ -359,12 +359,12 @@ void test_actuation_manager_motor_command(void) {
     manager.handle_pause_button(100, false);
     manager.handle_pause_button(160, false);
 
-    // Resume from pause restores MEDIUM (50% duty cycle)
+    // Resume from pause restores MEDIUM (70% duty cycle)
     manager.handle_pause_button(200, true);
     bool toggled_resume = manager.handle_pause_button(260, true);
     TEST_ASSERT_TRUE(toggled_resume);
     TEST_ASSERT_FALSE(manager.is_paused());
-    TEST_ASSERT_EQUAL_UINT8(50, manager.get_motor_duty());
+    TEST_ASSERT_EQUAL_UINT8(70, manager.get_motor_duty());
     TEST_ASSERT_EQUAL_UINT8(MOTOR_MEDIUM, state.get_motor_state());
 }
 

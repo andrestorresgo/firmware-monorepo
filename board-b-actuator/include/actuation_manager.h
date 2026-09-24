@@ -15,12 +15,12 @@ public:
                      IServoGateDriver& servo,
                      DebouncedButton& button);
 
-    // Initializes motor, servo, button, and sets normal operational states (motor 80%, servo closed)
+    // Initializes motor, servo, button, and sets normal operational states (motor 90%, servo closed)
     void begin();
 
     // Evaluates momentary push button with 50ms software debounce.
     // Toggles Machine Pause. On pause: cuts motor PWM to 0, locks servo.
-    // On unpause: restores motor PWM to 80%, unlocks servo, preserves LED counts.
+    // On unpause: restores motor PWM to configured speed (90% for ON, 70% for MEDIUM), unlocks servo, preserves LED counts.
     // Returns true if a state transition occurred.
     bool handle_pause_button(uint32_t now_ms, bool raw_pressed);
 

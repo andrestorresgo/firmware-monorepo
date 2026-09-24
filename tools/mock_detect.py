@@ -159,9 +159,9 @@ def show_state(client: MockDetectionClient):
 
     motor_str = str(motor).upper()
     if motor_str in ("ON", "TRUE", "1"):
-        motor_display = f"{GREEN}ACTIVE / ON (80% PWM){RESET}"
+        motor_display = f"{GREEN}ACTIVE / ON (90% PWM){RESET}"
     elif motor_str in ("MEDIUM", "2"):
-        motor_display = f"{YELLOW}ACTIVE / MEDIUM (50% PWM){RESET}"
+        motor_display = f"{YELLOW}ACTIVE / MEDIUM (70% PWM){RESET}"
     else:
         motor_display = f"{DIM}HALTED / OFF (0% PWM){RESET}"
 
@@ -390,8 +390,8 @@ Examples:
   ./mock-detect random              # Trigger 1 random shape detection
   ./mock-detect batch circle 5      # Trigger 5 circles with 2.2s delay (triggers rollover)
   ./mock-detect status              # View current system state and counters
-  ./mock-detect motor on            # Send ON (80%) speed command to DC motor
-  ./mock-detect motor medium        # Send MEDIUM (50%) speed command to DC motor
+  ./mock-detect motor on            # Send ON (90%) speed command to DC motor
+  ./mock-detect motor medium        # Send MEDIUM (70%) speed command to DC motor
   ./mock-detect motor off           # Send OFF (0%) speed command to DC motor
   ./mock-detect servo open          # Send OPEN command to sorting gate
   ./mock-detect servo close         # Send CLOSED command to sorting gate

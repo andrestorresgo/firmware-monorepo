@@ -14,8 +14,8 @@ void ActuationManager::begin() {
     servo_.begin();
     button_.reset();
 
-    // In normal active operations, DC conveyor motor runs forward at 80% duty cycle
-    motor_.drive_forward(80);
+    // In normal active operations, DC conveyor motor runs forward at 90% duty cycle
+    motor_.drive_forward(90);
     state_.set_motor_state(true);
 
     // Initial servo gate is Closed (0 degrees)
@@ -40,9 +40,9 @@ bool ActuationManager::handle_pause_button(uint32_t now_ms, bool raw_pressed) {
         // Exiting Machine Pause restores DC motor power according to configured speed state
         uint8_t restored = state_.get_motor_state();
         if (restored == MOTOR_MEDIUM) {
-            motor_.drive_forward(50);
+            motor_.drive_forward(70);
         } else if (restored == MOTOR_ON) {
-            motor_.drive_forward(80);
+            motor_.drive_forward(90);
         } else {
             motor_.stop();
         }
@@ -90,9 +90,9 @@ bool ActuationManager::handle_motor_command(uint8_t speed_state) {
 
     // 4. Actuate DC motor PWM
     if (speed_state == MOTOR_MEDIUM) {
-        motor_.drive_forward(50);
+        motor_.drive_forward(70);
     } else if (speed_state == MOTOR_ON) {
-        motor_.drive_forward(80);
+        motor_.drive_forward(90);
     } else {
         motor_.stop();
     }

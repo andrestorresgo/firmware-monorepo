@@ -11,7 +11,7 @@ class HBridgeMotor {
 public:
     virtual ~HBridgeMotor() = default;
     virtual void begin() = 0;
-    virtual void drive_forward(uint8_t duty_percent = 80) = 0;
+    virtual void drive_forward(uint8_t duty_percent = 90) = 0;
     virtual void stop() = 0;
     virtual bool is_running() const = 0;
     virtual uint8_t get_duty_percent() const = 0;
@@ -49,7 +49,7 @@ public:
         duty_percent_ = 0;
     }
 
-    void drive_forward(uint8_t duty_percent = 80) override {
+    void drive_forward(uint8_t duty_percent = 90) override {
         if (duty_percent > 100) duty_percent = 100;
         duty_percent_ = duty_percent;
         running_ = (duty_percent > 0);
@@ -98,7 +98,7 @@ public:
         duty_percent_ = 0;
     }
 
-    void drive_forward(uint8_t duty_percent = 80) override {
+    void drive_forward(uint8_t duty_percent = 90) override {
         if (duty_percent > 100) duty_percent = 100;
         duty_percent_ = duty_percent;
         running_ = (duty_percent > 0);

@@ -41,8 +41,8 @@ enum ServoPosition {
 // Motor Speed States
 enum MotorSpeedState {
     MOTOR_OFF    = 0, // Motor stopped (0% duty cycle)
-    MOTOR_ON     = 1, // Motor high/full forward (80% duty cycle)
-    MOTOR_MEDIUM = 2  // Motor medium speed (50% duty cycle)
+    MOTOR_ON     = 1, // Motor high/full forward (90% duty cycle)
+    MOTOR_MEDIUM = 2  // Motor medium speed (70% duty cycle)
 };
 
 #pragma pack(push, 1)
