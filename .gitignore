@@ -20,3 +20,6 @@
 
 # dashboard
 /dashboard-ui/
+
+# vision service
+/vision-service/

@@ -67,7 +67,8 @@ void networkTask(void* pvParameters) {
 
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
-    WiFi.disconnect(true);
+    WiFi.disconnect(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
     delay(100);
 
     WiFi.macAddress(s_my_mac);
@@ -103,43 +104,49 @@ void networkTask(void* pvParameters) {
         while (s_rx_queue && xQueueReceive(s_rx_queue, &rx_msg, 0) == pdTRUE) {
             EspNowPacket rx_pkt = {};
             if (!unpack_packet(rx_msg.data, (size_t)rx_msg.len, &rx_pkt)) {
-                Serial.println(F("[Actuator] WARN: Invalid frame received"));
+                Serial.printf("[Actuator] WARN: Invalid frame received (len=%d)\n", rx_msg.len);
                 continue;
             }
 
             if (rx_pkt.header.opcode == OPCODE_BEACON) {
                 const BeaconPayload& b = rx_pkt.payload.beacon;
-                Serial.printf("[Actuator] Captured Gateway Discovery Beacon on channel %d from %02X:%02X:%02X:%02X:%02X:%02X\n",
-                              b.wifi_channel,
-                              b.gateway_mac[0], b.gateway_mac[1], b.gateway_mac[2],
-                              b.gateway_mac[3], b.gateway_mac[4], b.gateway_mac[5]);
+                bool was_paired = s_link_manager.is_paired();
+                uint8_t old_ch = s_link_manager.get_current_channel();
+                bool channel_changed = (old_ch != b.wifi_channel);
 
                 if (s_link_manager.handle_beacon(&b, rx_msg.mac, now)) {
-                    // Lock radio to discovered channel
-                    esp_wifi_set_channel(b.wifi_channel, WIFI_SECOND_CHAN_NONE);
+                    if (!was_paired || channel_changed) {
+                        Serial.printf("[Actuator] Captured Gateway Discovery Beacon on channel %d from %02X:%02X:%02X:%02X:%02X:%02X\n",
+                                      b.wifi_channel,
+                                      b.gateway_mac[0], b.gateway_mac[1], b.gateway_mac[2],
+                                      b.gateway_mac[3], b.gateway_mac[4], b.gateway_mac[5]);
 
-                    // Register Gateway MAC as peer
-                    esp_now_peer_info_t gw_peer = {};
-                    memcpy(gw_peer.peer_addr, b.gateway_mac, 6);
-                    gw_peer.channel = b.wifi_channel;
-                    gw_peer.encrypt = false;
-                    gw_peer.ifidx = WIFI_IF_STA;
+                        // Lock radio to discovered channel
+                        esp_wifi_set_channel(b.wifi_channel, WIFI_SECOND_CHAN_NONE);
 
-                    if (esp_now_is_peer_exist(gw_peer.peer_addr)) {
-                        esp_now_mod_peer(&gw_peer);
-                    } else {
-                        esp_now_add_peer(&gw_peer);
-                    }
+                        // Register Gateway MAC as peer
+                        esp_now_peer_info_t gw_peer = {};
+                        memcpy(gw_peer.peer_addr, b.gateway_mac, 6);
+                        gw_peer.channel = b.wifi_channel;
+                        gw_peer.encrypt = false;
+                        gw_peer.ifidx = WIFI_IF_STA;
 
-                    // Reply with Pairing Acknowledgment
-                    EspNowPacket ack_pkt = {};
-                    s_link_manager.build_beacon_ack(s_my_mac, &ack_pkt);
+                        if (esp_now_is_peer_exist(gw_peer.peer_addr)) {
+                            esp_now_mod_peer(&gw_peer);
+                        } else {
+                            esp_now_add_peer(&gw_peer);
+                        }
 
-                    uint8_t tx_buf[64];
-                    int tx_len = pack_packet(&ack_pkt, tx_buf, sizeof(tx_buf));
-                    if (tx_len > 0) {
-                        esp_now_send(gw_peer.peer_addr, tx_buf, (size_t)tx_len);
-                        Serial.println(F("[Actuator] Sent BEACON_ACK to Gateway, link paired!"));
+                        // Reply with Pairing Acknowledgment
+                        EspNowPacket ack_pkt = {};
+                        s_link_manager.build_beacon_ack(s_my_mac, &ack_pkt);
+
+                        uint8_t tx_buf[64];
+                        int tx_len = pack_packet(&ack_pkt, tx_buf, sizeof(tx_buf));
+                        if (tx_len > 0) {
+                            esp_now_send(gw_peer.peer_addr, tx_buf, (size_t)tx_len);
+                            Serial.println(F("[Actuator] Sent BEACON_ACK to Gateway, link paired!"));
+                        }
                     }
                 }
             } else if (rx_pkt.header.opcode == OPCODE_SHAPE_DETECTION) {
@@ -192,7 +199,8 @@ void networkTask(void* pvParameters) {
         }
 
         // 5. Send Telemetry Heartbeat (periodic every 3s OR event-driven)
-        bool event_pending = (s_event_telemetry_queue && xQueueReceive(s_event_telemetry_queue, &now, 0) == pdTRUE);
+        uint32_t event_ts = 0;
+        bool event_pending = (s_event_telemetry_queue && xQueueReceive(s_event_telemetry_queue, &event_ts, 0) == pdTRUE);
         bool periodic_due = s_link_manager.should_send_heartbeat(now);
 
         if (s_link_manager.is_paired() && (periodic_due || event_pending)) {

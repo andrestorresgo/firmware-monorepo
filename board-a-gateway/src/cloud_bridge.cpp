@@ -213,18 +213,16 @@ void CloudBridge::broadcast_beacon() {
     }
 
     uint32_t now = millis();
-    // 100 ms periodic discovery beacon broadcast for fast Actuator channel scanning (<2s)
-    if (now - last_beacon_ms_ >= 100) {
+    // 100 ms periodic discovery beacon broadcast until paired, then 3000 ms periodic broadcast
+    uint32_t interval = actuator_paired_ ? 3000 : 100;
+    if (now - last_beacon_ms_ >= interval) {
         last_beacon_ms_ = now;
 
         uint8_t buffer[64];
         int len = build_beacon_packet(wifi_channel_, mac_address_, now, buffer, sizeof(buffer));
         if (len > 0) {
             uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-            esp_err_t result = esp_now_send(bcast, buffer, (size_t)len);
-            if (result != ESP_OK) {
-                // Non-fatal, transient send error
-            }
+            esp_now_send(bcast, buffer, (size_t)len);
         }
     }
 }
